@@ -21,6 +21,11 @@ class _AuditScreenState extends State<AuditScreen> {
       appBar: AppBar(
         title: Text(s.name),
         actions: [
+          IconButton(
+            tooltip: 'Rename room',
+            icon: const Icon(Icons.edit_outlined),
+            onPressed: _renameRoom,
+          ),
           TextButton(
             onPressed: () {
               if (!s.isComplete) {
@@ -60,18 +65,6 @@ class _AuditScreenState extends State<AuditScreen> {
             ],
           ),
           const SizedBox(height: 18),
-          TextFormField(
-            initialValue: s.owner,
-            onChanged: (v) {
-              s.owner = v;
-              AuditScope.of(context).changed();
-            },
-            decoration: const InputDecoration(
-              labelText: 'Owner / occupant (optional)',
-              prefixIcon: Icon(Icons.person_outline),
-            ),
-          ),
-          const SizedBox(height: 12),
           InkWell(
             onTap: () async {
               final d = await showDatePicker(
@@ -156,11 +149,7 @@ class _AuditScreenState extends State<AuditScreen> {
               (e) => _FindingCard(
                 index: e.key,
                 finding: e.value,
-                onDelete:
-                    () => setState(() {
-                      AuditScope.of(context).queueFindingDeletion(e.value);
-                      s.findings.removeAt(e.key);
-                    }),
+                onDelete: () => _deleteFinding(e.value),
               ),
             ),
             OutlinedButton.icon(
@@ -204,6 +193,74 @@ class _AuditScreenState extends State<AuditScreen> {
         AuditScope.of(context).changed();
       });
     }
+  }
+
+  Future<void> _renameRoom() async {
+    final controller = TextEditingController(text: widget.space.name);
+    final name = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Rename room'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Room name *'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (name == null || name.isEmpty || !mounted) return;
+    final duplicate = widget.project.spaces.any(
+      (room) =>
+          room.id != widget.space.id &&
+          room.sectionId == widget.space.sectionId &&
+          room.name.toLowerCase() == name.toLowerCase(),
+    );
+    if (duplicate) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Room names must be unique in a space.')),
+      );
+      return;
+    }
+    setState(() => widget.space.name = name);
+    AuditScope.of(context).changed();
+  }
+
+  Future<void> _deleteFinding(Finding finding) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete this issue?'),
+        content: const Text('Its notes and evidence photos will be deleted.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() {
+      AuditScope.of(context).queueFindingDeletion(finding);
+      widget.space.findings.remove(finding);
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Issue deleted')),
+    );
   }
 
   String _date(DateTime d) =>
@@ -304,6 +361,13 @@ class _FindingEditorState extends State<FindingEditor> {
   late final TextEditingController recommendation = TextEditingController(
     text: widget.finding.recommendation,
   );
+
+  @override
+  void initState() {
+    super.initState();
+    widget.finding.severity = normalizeSeverity(widget.finding.severity);
+  }
+
   Future<void> addPhotos() async {
     final r = await FilePicker.platform.pickFiles(
       type: FileType.image,
@@ -319,6 +383,32 @@ class _FindingEditorState extends State<FindingEditor> {
         }
       });
     }
+  }
+
+  Future<void> _deletePhoto(int index) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete this photo?'),
+        content: const Text('The cloud copy will also be removed after sync.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() {
+      final photo = widget.finding.photos[index];
+      AuditScope.of(context).queuePhotoDeletion(photo);
+      widget.finding.photos.removeAt(index);
+    });
   }
 
   Future<void> pickIssue() async {
@@ -364,7 +454,7 @@ class _FindingEditorState extends State<FindingEditor> {
       if (!store.profile.customIssueTypes.any(
         (v) => v.toLowerCase() == custom.toLowerCase(),
       ))
-        store.profile.customIssueTypes.add(custom);
+        {store.profile.customIssueTypes.add(custom);}
       setState(() => widget.finding.type = custom);
       store.changed();
     } else {
@@ -380,7 +470,7 @@ class _FindingEditorState extends State<FindingEditor> {
       selected: widget.finding.location,
     );
     if (value != null && mounted)
-      setState(() => widget.finding.location = value);
+      {setState(() => widget.finding.location = value);}
   }
 
   @override
@@ -433,7 +523,7 @@ class _FindingEditorState extends State<FindingEditor> {
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField(
-            value: widget.finding.severity,
+            value: normalizeSeverity(widget.finding.severity),
             decoration: const InputDecoration(
               labelText: 'Rectification priority',
             ),
@@ -506,11 +596,26 @@ class _FindingEditorState extends State<FindingEditor> {
                   (_, i) => Stack(
                     fit: StackFit.expand,
                     children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: Image.memory(
-                          widget.finding.photos[i].bytes,
-                          fit: BoxFit.cover,
+                      GestureDetector(
+                        onTap: () => showDialog<void>(
+                          context: context,
+                          builder: (_) => Dialog(
+                            backgroundColor: Colors.black,
+                            insetPadding: const EdgeInsets.all(16),
+                            child: InteractiveViewer(
+                              child: Image.memory(
+                                widget.finding.photos[i].bytes,
+                                fit: BoxFit.contain,
+                              ),
+                            ),
+                          ),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.memory(
+                            widget.finding.photos[i].bytes,
+                            fit: BoxFit.cover,
+                          ),
                         ),
                       ),
                       Positioned(
@@ -523,14 +628,7 @@ class _FindingEditorState extends State<FindingEditor> {
                             padding: EdgeInsets.zero,
                             iconSize: 16,
                             color: Colors.white,
-                            onPressed:
-                                () => setState(() {
-                                  final photo = widget.finding.photos[i];
-                                  AuditScope.of(
-                                    context,
-                                  ).queuePhotoDeletion(photo);
-                                  widget.finding.photos.removeAt(i);
-                                }),
+                            onPressed: () => _deletePhoto(i),
                             icon: const Icon(Icons.close),
                           ),
                         ),

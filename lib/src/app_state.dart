@@ -6,14 +6,15 @@ import 'models.dart';
 import 'supabase_repository.dart';
 
 class AuditStore extends ChangeNotifier {
-  AuditStore({LocalRepository? repository})
+  AuditStore({LocalRepository? repository, SupabaseRepository? remote})
     : _repository = repository ?? LocalRepository(),
-      _remote = SupabaseRepository();
+      _remote = remote ?? SupabaseRepository();
 
   final LocalRepository _repository;
   final SupabaseRepository _remote;
   Timer? _saveTimer;
   Timer? _syncTimer;
+  int _changeRevision = 0;
   bool isReady = false;
   bool isSaving = false;
   String? storageError;
@@ -31,6 +32,7 @@ class AuditStore extends ChangeNotifier {
 
   Future<void> activateUser(String? userId, {bool notify = true}) async {
     if (isReady && activeUserId == userId) return;
+    _changeRevision++;
     _saveTimer?.cancel();
     _syncTimer?.cancel();
     activeUserId = userId;
@@ -92,6 +94,7 @@ class AuditStore extends ChangeNotifier {
   }
 
   void changed() {
+    _changeRevision++;
     pendingSync = true;
     notifyListeners();
     _saveTimer?.cancel();
@@ -149,16 +152,20 @@ class AuditStore extends ChangeNotifier {
     changed();
   }
 
+  void queueFolderDeletion(String folderId) {
+    pendingDeletes.add(PendingDelete(table: 'project_sections', id: folderId));
+  }
+
   void deleteProject(AuditProject project) {
     if (project.coverPhoto != null)
-      pendingDeletes.add(
+      {pendingDeletes.add(
         PendingDelete(
           table: 'projects',
           id: project.id,
           bucket: 'audit-media',
           objectPath: project.coverPhoto!.remotePath,
         ),
-      );
+      );}
     for (final space in project.spaces) {
       for (final finding in space.findings) {
         for (final photo in finding.photos) {
@@ -180,6 +187,7 @@ class AuditStore extends ChangeNotifier {
 
   Future<void> syncNow() async {
     if (isSyncing || !_remote.canSync) return;
+    final syncRevision = _changeRevision;
     isSyncing = true;
     syncError = null;
     notifyListeners();
@@ -189,7 +197,20 @@ class AuditStore extends ChangeNotifier {
         await _remote.processDeletes(pendingDeletes);
         pendingDeletes.clear();
       }
+      // A field edit may happen while network writes are in flight. Never let
+      // the older server snapshot replace that newer local state. The next
+      // sync will upload the revision that arrived during this one.
+      if (_changeRevision != syncRevision) {
+        pendingSync = true;
+        await _saveNow();
+        return;
+      }
       final remote = await _remote.pullSnapshot(profile);
+      if (_changeRevision != syncRevision) {
+        pendingSync = true;
+        await _saveNow();
+        return;
+      }
       projects
         ..clear()
         ..addAll(remote.projects);
@@ -203,6 +224,7 @@ class AuditStore extends ChangeNotifier {
     } finally {
       isSyncing = false;
       notifyListeners();
+      if (pendingSync && syncError == null) scheduleSync();
     }
   }
 

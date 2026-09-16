@@ -43,15 +43,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
       await Supabase.instance.client.auth.updateUser(
         UserAttributes(password: password),
       );
-      if (mounted)
+      if (mounted){
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('Password updated.')));
+        ).showSnackBar(const SnackBar(content: Text('Password updated.')));}
     } on AuthException catch (e) {
-      if (mounted)
+      if (mounted){
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text(e.message)));
+      }
     }
   }
 
@@ -81,14 +82,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
       await Supabase.instance.client.functions.invoke('delete-account');
       await Supabase.instance.client.auth.signOut();
     } catch (_) {
-      if (mounted)
+      if (mounted){
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
               'Account deletion could not be completed. Please try again.',
             ),
           ),
-        );
+        );}
     }
   }
 

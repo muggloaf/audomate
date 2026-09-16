@@ -49,9 +49,8 @@ migrate_working_dir/
 supabase.local*.json
 !supabase.local.example.json
 
-# Supabase CLI state (schema, migrations and functions remain committed)
-/supabase/.branches/
-/supabase/.temp/
+# Database schema, policies, CLI state and Edge Functions stay private.
+/supabase/
 
 # Symbolication related
 app.*.symbols

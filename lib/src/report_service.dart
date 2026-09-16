@@ -9,19 +9,20 @@ class ReportService {
   static Future<void> share(
     AuditProject project,
     EngineerProfile profile, {
-    String? issueFilter,
+    Set<String> issueFilters = const {},
+    bool noIssuesOnly = false,
     bool issuesOnly = false,
   }) async {
     final bytes = await build(
       project,
       profile,
-      issueFilter: issueFilter,
+      issueFilters: issueFilters,
+      noIssuesOnly: noIssuesOnly,
       issuesOnly: issuesOnly,
     );
-    final suffix =
-        issueFilter == null
-            ? (issuesOnly ? '_issues' : '_complete')
-            : '_${issueFilter.replaceAll(RegExp(r'[^a-zA-Z0-9]+'), '_')}';
+    final suffix = issueFilters.isEmpty && !noIssuesOnly
+        ? (issuesOnly ? '_issues' : '_complete')
+        : '_filtered';
     await Printing.sharePdf(
       bytes: bytes,
       filename: '${project.number}$suffix.pdf',
@@ -31,7 +32,8 @@ class ReportService {
   static Future<Uint8List> build(
     AuditProject project,
     EngineerProfile profile, {
-    String? issueFilter,
+    Set<String> issueFilters = const {},
+    bool noIssuesOnly = false,
     bool issuesOnly = false,
   }) async {
     final doc = pw.Document(title: '${project.name} Structural Audit');
@@ -53,13 +55,23 @@ class ReportService {
     final selected =
         project.spaces
             .where(
-              (s) =>
-                  !issuesOnly ||
-                  s.findings.any(
-                    (f) => issueFilter == null || f.type == issueFilter,
-                  ),
+              (s) => noIssuesOnly
+                  ? s.noIssues
+                  : !issuesOnly ||
+                      issueFilters.isEmpty ||
+                      issueFilters.every(
+                        (tag) => s.findings.any((f) => f.type == tag),
+                      ),
             )
-            .toList();
+            .toList()
+          ..sort((a, b) {
+            final section = a.section.toLowerCase().compareTo(
+              b.section.toLowerCase(),
+            );
+            return section != 0
+                ? section
+                : a.name.toLowerCase().compareTo(b.name.toLowerCase());
+          });
 
     doc.addPage(
       pw.Page(
@@ -69,6 +81,8 @@ class ReportService {
             (_) => pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
+                _brand(grey),
+                pw.SizedBox(height: 8),
                 if (letterhead != null)
                   pw.Container(
                     height: 70,
@@ -107,7 +121,7 @@ class ReportService {
                   project.site,
                   style: pw.TextStyle(fontSize: 13, color: grey),
                 ),
-                if (issueFilter != null) ...[
+                if (issueFilters.isNotEmpty || noIssuesOnly) ...[
                   pw.SizedBox(height: 14),
                   pw.Container(
                     padding: const pw.EdgeInsets.symmetric(
@@ -116,7 +130,9 @@ class ReportService {
                     ),
                     color: pale,
                     child: pw.Text(
-                      'Filter: $issueFilter',
+                      noIssuesOnly
+                          ? 'Filter: No issues reported'
+                          : 'Filters: ${issueFilters.join(', ')}',
                       style: pw.TextStyle(
                         color: green,
                         fontWeight: pw.FontWeight.bold,
@@ -152,6 +168,8 @@ class ReportService {
               (_) => pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
+                  _brand(grey),
+                  pw.SizedBox(height: 12),
                   pw.Text(
                     'Preamble',
                     style: pw.TextStyle(
@@ -201,7 +219,7 @@ class ReportService {
                   style: pw.TextStyle(color: grey, fontSize: 9),
                 ),
                 pw.Text(
-                  project.number,
+                  '${project.number}  ·  made with audomate.',
                   style: pw.TextStyle(color: grey, fontSize: 9),
                 ),
               ],
@@ -227,12 +245,30 @@ class ReportService {
             pw.SizedBox(height: 18),
           ];
           var n = 1;
+          String? currentSection;
           for (final s in selected) {
-            final findings =
-                s.findings
-                    .where((f) => issueFilter == null || f.type == issueFilter)
-                    .toList();
+            final findings = s.findings
+                .where(
+                  (f) => issueFilters.isEmpty || issueFilters.contains(f.type),
+                )
+                .toList();
             if (issuesOnly && findings.isEmpty) continue;
+            if (currentSection != s.section) {
+              currentSection = s.section;
+              widgets.addAll([
+                pw.SizedBox(height: n == 1 ? 0 : 10),
+                pw.Text(
+                  currentSection,
+                  style: pw.TextStyle(
+                    fontSize: 17,
+                    color: green,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+                pw.Divider(color: pale),
+                pw.SizedBox(height: 6),
+              ]);
+            }
             widgets.addAll(
               _space(
                 s,
@@ -258,6 +294,8 @@ class ReportService {
               (_) => pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
+                  _brand(grey),
+                  pw.SizedBox(height: 12),
                   pw.Text(
                     'Conclusion',
                     style: pw.TextStyle(
@@ -424,6 +462,13 @@ class ReportService {
       border: pw.Border.all(color: PdfColors.grey300),
     ),
     child: pw.Image(pw.MemoryImage(p.bytes), fit: pw.BoxFit.cover),
+  );
+  static pw.Widget _brand(PdfColor grey) => pw.Align(
+    alignment: pw.Alignment.centerRight,
+    child: pw.Text(
+      'made with audomate.',
+      style: pw.TextStyle(fontSize: 7, color: grey),
+    ),
   );
   static pw.Widget _metric(String value, String label) => pw.Expanded(
     child: pw.Container(

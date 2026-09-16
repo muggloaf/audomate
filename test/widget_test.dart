@@ -26,7 +26,7 @@ void main() {
     );
     expect(find.byType(BrandWordmark), findsOneWidget);
     expect(find.text('audomate.', findRichText: true), findsOneWidget);
-    expect(find.text('New'), findsOneWidget);
+    expect(find.text('New project'), findsOneWidget);
     expect(find.text('Test Society'), findsOneWidget);
   });
 }

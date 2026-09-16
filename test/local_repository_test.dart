@@ -29,31 +29,58 @@ void main() {
               photos: [photo],
             ),
           );
+    final emptyFolder = AuditFolder(
+      name: 'Flat 101',
+      kind: 'Flat',
+      parentId: space.sectionId,
+    );
+    final uninspectedRoom = SpaceAudit(
+      name: 'Future room',
+      section: emptyFolder.name,
+      sectionId: emptyFolder.id,
+    );
     final project = AuditProject(
       number: 'SA-001',
       name: 'Test Society',
       site: 'Pune',
       createdAt: DateTime(2026, 9, 14),
-      spaces: [space],
+      spaces: [space, uninspectedRoom],
       coverPhoto: photo,
+      folders: [
+        AuditFolder(id: space.sectionId, name: 'A Wing', kind: 'Wing'),
+        emptyFolder,
+      ],
+      projectType: 'society',
     );
     final profile = EngineerProfile(name: 'Engineer', signature: photo);
+    profile.projectTemplates.first.spaceTemplates.add(
+      SpaceTemplate(
+        id: 'terrace',
+        name: 'Terrace',
+        kind: 'Amenity',
+        roomNames: ['Pump room'],
+      ),
+    );
 
     await repository.save([project], profile);
     final restored = await repository.load();
 
     expect(restored, isNotNull);
     expect(restored!.projects.single.name, 'Test Society');
+    expect(restored.projects.single.projectType, 'society');
+    expect(restored.projects.single.folders.length, 2);
+    expect(restored.projects.single.spaces.length, 2);
+    expect(restored.projects.single.spaces.last.isComplete, isFalse);
     expect(
-      restored.projects.single.spaces.single.findings.single.notes,
+      restored.projects.single.spaces.first.findings.single.notes,
       'Diagonal crack.',
     );
     expect(
       restored
           .projects
-          .single
+          .first
           .spaces
-          .single
+          .first
           .findings
           .single
           .photos
@@ -63,5 +90,9 @@ void main() {
     );
     expect(restored.profile.name, 'Engineer');
     expect(restored.profile.signature!.name, 'crack.jpg');
+    expect(
+      restored.profile.projectTemplates.first.spaceTemplates.last.name,
+      'Terrace',
+    );
   });
 }

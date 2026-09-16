@@ -150,7 +150,7 @@ class LocalRepository {
     id: value['id'] as String?,
     type: value['type'] as String? ?? 'Other',
     location: value['location'] as String? ?? 'Other',
-    severity: value['severity'] as String? ?? severities.last,
+    severity: normalizeSeverity(value['severity'] as String?),
     notes: value['notes'] as String? ?? '',
     recommendation: value['recommendation'] as String? ?? '',
     photos:
@@ -166,7 +166,6 @@ class LocalRepository {
     'inspectionId': s.inspectionId,
     'name': s.name,
     'section': s.section,
-    'owner': s.owner,
     'inspectedAt': s.inspectedAt?.toUtc().toIso8601String(),
     'noIssues': s.noIssues,
     'findings': s.findings.map(_findingToJson).toList(),
@@ -179,7 +178,6 @@ class LocalRepository {
       inspectionId: value['inspectionId'] as String?,
       name: value['name'] as String? ?? 'Untitled space',
       section: value['section'] as String? ?? 'Standalone spaces',
-      owner: value['owner'] as String? ?? '',
     );
     final inspectedAt = value['inspectedAt'] as String?;
     if (inspectedAt != null) {
@@ -197,6 +195,7 @@ class LocalRepository {
   Map<String, dynamic> _projectToJson(AuditProject p) => {
     'id': p.id,
     'organisationId': p.organisationId,
+    'projectType': p.projectType,
     'number': p.number,
     'name': p.name,
     'site': p.site,
@@ -205,25 +204,52 @@ class LocalRepository {
     'preamble': p.preamble,
     'conclusion': p.conclusion,
     'spaces': p.spaces.map(_spaceToJson).toList(),
+    'folders':
+        p.folders
+            .map(
+              (f) => {
+                'id': f.id,
+                'name': f.name,
+                'kind': f.kind,
+                'parentId': f.parentId,
+              },
+            )
+            .toList(),
   };
 
-  AuditProject _projectFromJson(Map<String, dynamic> value) => AuditProject(
-    id: value['id'] as String?,
-    organisationId: value['organisationId'] as String?,
-    number: value['number'] as String? ?? '',
-    name: value['name'] as String? ?? 'Untitled project',
-    site: value['site'] as String? ?? '',
-    createdAt:
-        DateTime.tryParse(value['createdAt'] as String? ?? '')?.toLocal() ??
-        DateTime.now(),
-    coverPhoto: _photoFromJson(value['coverPhoto']),
-    preamble: value['preamble'] as String? ?? '',
-    conclusion: value['conclusion'] as String? ?? '',
-    spaces:
+  AuditProject _projectFromJson(Map<String, dynamic> value) {
+    final spaces =
         (value['spaces'] as List<dynamic>? ?? const [])
             .map((v) => _spaceFromJson(v as Map<String, dynamic>))
-            .toList(),
-  );
+            .toList();
+    final folderValues = value['folders'] as List<dynamic>?;
+    return AuditProject(
+      id: value['id'] as String?,
+      organisationId: value['organisationId'] as String?,
+      projectType: value['projectType'] as String? ?? 'Other',
+      number: value['number'] as String? ?? '',
+      name: value['name'] as String? ?? 'Untitled project',
+      site: value['site'] as String? ?? '',
+      createdAt:
+          DateTime.tryParse(value['createdAt'] as String? ?? '')?.toLocal() ??
+          DateTime.now(),
+      coverPhoto: _photoFromJson(value['coverPhoto']),
+      preamble: value['preamble'] as String? ?? '',
+      conclusion: value['conclusion'] as String? ?? '',
+      spaces: spaces,
+      folders:
+          folderValues
+              ?.map(
+                (v) => AuditFolder(
+                  id: (v as Map<String, dynamic>)['id'] as String?,
+                  name: v['name'] as String? ?? 'Space',
+                  kind: v['kind'] as String? ?? 'Space',
+                  parentId: v['parentId'] as String?,
+                ),
+              )
+              .toList(),
+    );
+  }
 
   Map<String, dynamic> _profileToJson(EngineerProfile p) => {
     'name': p.name,
@@ -238,6 +264,10 @@ class LocalRepository {
     'signatureRemotePath': p.signatureRemotePath,
     'darkMode': p.darkMode,
     'customIssueTypes': p.customIssueTypes,
+    'customProjectTemplates': p.customProjectTemplates,
+    'customSpaceTemplates': p.customSpaceTemplates,
+    'projectTemplates':
+        p.projectTemplates.map((value) => value.toJson()).toList(),
   };
 
   EngineerProfile _profileFromJson(Map<String, dynamic> value) =>
@@ -256,5 +286,19 @@ class LocalRepository {
         customIssueTypes:
             (value['customIssueTypes'] as List<dynamic>? ?? const [])
                 .cast<String>(),
+        customProjectTemplates:
+            (value['customProjectTemplates'] as List<dynamic>? ?? const [])
+                .cast<String>(),
+        customSpaceTemplates:
+            (value['customSpaceTemplates'] as List<dynamic>? ?? const [])
+                .cast<String>(),
+        projectTemplates:
+            (value['projectTemplates'] as List<dynamic>?)
+                ?.map(
+                  (item) => ProjectTemplate.fromJson(
+                    Map<String, dynamic>.from(item as Map),
+                  ),
+                )
+                .toList(),
       );
 }

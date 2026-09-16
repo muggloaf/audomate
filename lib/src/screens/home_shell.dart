@@ -6,6 +6,7 @@ import '../widgets/brand_wordmark.dart';
 import 'new_project_screen.dart';
 import 'profile_screen.dart';
 import 'project_screen.dart';
+import 'templates_screen.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -19,20 +20,29 @@ class _HomeShellState extends State<HomeShell> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: index == 2 ? const ProfileScreen() : const ProjectsView(),
+        child: switch (index) {
+          1 => const TemplatesScreen(),
+          2 => const ProfileScreen(),
+          _ => const ProjectsView(),
+        },
       ),
+      floatingActionButton:
+          index == 0
+              ? FloatingActionButton.extended(
+                onPressed:
+                    () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const NewProjectScreen(),
+                      ),
+                    ),
+                icon: const Icon(Icons.add),
+                label: const Text('New project'),
+              )
+              : null,
       bottomNavigationBar: NavigationBar(
         selectedIndex: index,
-        onDestinationSelected: (v) {
-          if (v == 1) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const NewProjectScreen()),
-            );
-          } else {
-            setState(() => index = v);
-          }
-        },
+        onDestinationSelected: (v) => setState(() => index = v),
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.folder_outlined),
@@ -40,9 +50,9 @@ class _HomeShellState extends State<HomeShell> {
             label: 'Projects',
           ),
           NavigationDestination(
-            icon: Icon(Icons.add_circle_outline, size: 30),
-            selectedIcon: Icon(Icons.add_circle, size: 30),
-            label: 'New',
+            icon: Icon(Icons.dashboard_customize_outlined),
+            selectedIcon: Icon(Icons.dashboard_customize),
+            label: 'Templates',
           ),
           NavigationDestination(
             icon: Icon(Icons.person_outline),
@@ -55,11 +65,40 @@ class _HomeShellState extends State<HomeShell> {
   }
 }
 
-class ProjectsView extends StatelessWidget {
+enum ProjectSort { newest, oldest, name, projectNumber }
+
+class ProjectsView extends StatefulWidget {
   const ProjectsView({super.key});
+
+  @override
+  State<ProjectsView> createState() => _ProjectsViewState();
+}
+
+class _ProjectsViewState extends State<ProjectsView> {
+  String query = '';
+  ProjectSort sort = ProjectSort.newest;
+
   @override
   Widget build(BuildContext context) {
     final store = AuditScope.of(context);
+    final projects =
+        store.projects.where((project) {
+          final text =
+              '${project.name} ${project.site} ${project.number}'.toLowerCase();
+          return text.contains(query.toLowerCase());
+        }).toList();
+    projects.sort(
+      (a, b) => switch (sort) {
+        ProjectSort.newest => b.createdAt.compareTo(a.createdAt),
+        ProjectSort.oldest => a.createdAt.compareTo(b.createdAt),
+        ProjectSort.name => a.name.toLowerCase().compareTo(
+          b.name.toLowerCase(),
+        ),
+        ProjectSort.projectNumber => a.number.toLowerCase().compareTo(
+          b.number.toLowerCase(),
+        ),
+      },
+    );
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
       child: Column(
@@ -92,37 +131,52 @@ class ProjectsView extends StatelessWidget {
                 ),
                 IconButton(
                   tooltip:
-                    store.syncError != null
-                        ? 'Sync failed — tap to retry'
-                        : store.isSyncing
-                        ? 'Syncing…'
-                        : store.pendingSync
-                        ? 'Waiting to sync'
-                        : 'All changes synced',
-                  onPressed: store.isSyncing ? null : store.syncNow,
+                      store.syncError != null
+                          ? 'Sync failed — tap to retry'
+                          : store.isSyncing
+                          ? 'Syncing…'
+                          : store.pendingSync
+                          ? 'Waiting to sync'
+                          : 'All changes synced',
+                  onPressed:
+                      store.isSyncing
+                          ? null
+                          : () async {
+                            await store.syncNow();
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  store.syncError == null
+                                      ? 'Synced to cloud'
+                                      : 'Could not sync: ${store.syncError}',
+                                ),
+                              ),
+                            );
+                          },
                   icon:
-                    store.isSyncing
-                        ? const SizedBox(
-                          width: 21,
-                          height: 21,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                        : Icon(
-                          store.syncError != null
-                              ? Icons.cloud_off_outlined
-                              : store.pendingSync
-                              ? Icons.cloud_upload_outlined
-                              : Icons.cloud_done_outlined,
-                          color:
-                              store.syncError != null
-                                  ? Theme.of(context).colorScheme.error
-                                  : brandGreen,
-                        ),
+                      store.isSyncing
+                          ? const SizedBox(
+                            width: 21,
+                            height: 21,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                          : Icon(
+                            store.syncError != null
+                                ? Icons.cloud_off_outlined
+                                : store.pendingSync
+                                ? Icons.cloud_upload_outlined
+                                : Icons.cloud_done_outlined,
+                            color:
+                                store.syncError != null
+                                    ? Theme.of(context).colorScheme.error
+                                    : brandGreen,
+                          ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 28),
+          const SizedBox(height: 20),
           Text(
             'Good ${DateTime.now().hour < 12 ? 'morning' : 'evening'},',
             style: const TextStyle(fontSize: 15, color: muted),
@@ -135,7 +189,49 @@ class ProjectsView extends StatelessWidget {
               height: 1.2,
             ),
           ),
-          const SizedBox(height: 28),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              Expanded(
+                flex: 3,
+                child: TextField(
+                  onChanged: (value) => setState(() => query = value.trim()),
+                  decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.search),
+                    hintText: 'Search projects',
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                flex: 2,
+                child: DropdownButtonFormField<ProjectSort>(
+                  value: sort,
+                  decoration: const InputDecoration(labelText: 'Sort'),
+                  items: const [
+                    DropdownMenuItem(
+                      value: ProjectSort.newest,
+                      child: Text('Newest'),
+                    ),
+                    DropdownMenuItem(
+                      value: ProjectSort.oldest,
+                      child: Text('Oldest'),
+                    ),
+                    DropdownMenuItem(
+                      value: ProjectSort.name,
+                      child: Text('Name'),
+                    ),
+                    DropdownMenuItem(
+                      value: ProjectSort.projectNumber,
+                      child: Text('Number'),
+                    ),
+                  ],
+                  onChanged: (value) => setState(() => sort = value!),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
           Row(
             children: [
               const Expanded(
@@ -145,7 +241,7 @@ class ProjectsView extends StatelessWidget {
                 ),
               ),
               Text(
-                '${store.projects.length} total',
+                '${projects.length} total',
                 style: const TextStyle(color: muted),
               ),
             ],
@@ -154,10 +250,9 @@ class ProjectsView extends StatelessWidget {
           Expanded(
             child: ListView.separated(
               padding: const EdgeInsets.only(bottom: 20),
-              itemCount: store.projects.length,
+              itemCount: projects.length,
               separatorBuilder: (_, __) => const SizedBox(height: 12),
-              itemBuilder:
-                  (context, i) => _ProjectCard(project: store.projects[i]),
+              itemBuilder: (context, i) => _ProjectCard(project: projects[i]),
             ),
           ),
         ],

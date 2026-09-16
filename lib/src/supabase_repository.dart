@@ -77,6 +77,7 @@ class SupabaseRepository {
         'id': project.id,
         'organisation_id': organisationId,
         'project_number': project.number,
+        'project_type': project.projectType,
         'name': project.name,
         'site_address': project.site,
         'project_date': _date(project.createdAt),
@@ -92,19 +93,16 @@ class SupabaseRepository {
         'owner_id': user.id,
       });
 
-      final sectionIds = <String, String>{};
-      for (final space in project.spaces) {
-        final sectionId = sectionIds.putIfAbsent(
-          space.section,
-          () => space.sectionId,
-        );
-        space.sectionId = sectionId;
+      if (project.folders.isEmpty && project.spaces.isNotEmpty) {
+        project.folders.addAll(AuditProject.foldersFromSpaces(project.spaces));
       }
-      for (final entry in sectionIds.entries) {
+      for (final folder in project.folders) {
         await client.from('project_sections').upsert({
-          'id': entry.value,
+          'id': folder.id,
           'project_id': project.id,
-          'name': entry.key,
+          'parent_section_id': folder.parentId,
+          'name': folder.name,
+          'kind': folder.kind,
         });
       }
 
@@ -119,7 +117,7 @@ class SupabaseRepository {
           'project_id': project.id,
           'section_id': space.sectionId,
           'name': space.name,
-          'owner_or_occupant': space.owner,
+          'owner_or_occupant': '',
           'sort_order': spaceIndex,
         });
         if (!space.isComplete && space.inspectedAt == null) continue;
@@ -194,69 +192,84 @@ class SupabaseRepository {
         .eq('owner_id', user.id)
         .isFilter('deleted_at', null)
         .order('updated_at', ascending: false);
-    final projectsData = projectRows
-        .map((v) => Map<String, dynamic>.from(v))
-        .toList();
+    final projectsData =
+        projectRows.map((v) => Map<String, dynamic>.from(v)).toList();
     final projectIds = projectsData.map((v) => v['id'] as String).toList();
 
-    final sectionRows = projectIds.isEmpty
-        ? <dynamic>[]
-        : await client
-            .from('project_sections')
-            .select()
-            .inFilter('project_id', projectIds);
-    final spaceRows = projectIds.isEmpty
-        ? <dynamic>[]
-        : await client
-            .from('spaces')
-            .select()
-            .inFilter('project_id', projectIds)
-            .isFilter('deleted_at', null)
-            .order('sort_order');
-    final spacesData = spaceRows
-        .map((v) => Map<String, dynamic>.from(v))
-        .toList();
+    final sectionRows =
+        projectIds.isEmpty
+            ? <dynamic>[]
+            : await client
+                .from('project_sections')
+                .select()
+                .inFilter('project_id', projectIds);
+    final spaceRows =
+        projectIds.isEmpty
+            ? <dynamic>[]
+            : await client
+                .from('spaces')
+                .select()
+                .inFilter('project_id', projectIds)
+                .isFilter('deleted_at', null)
+                .order('sort_order');
+    final spacesData =
+        spaceRows.map((v) => Map<String, dynamic>.from(v)).toList();
     final spaceIds = spacesData.map((v) => v['id'] as String).toList();
-    final inspectionRows = spaceIds.isEmpty
-        ? <dynamic>[]
-        : await client
-            .from('inspections')
-            .select()
-            .inFilter('space_id', spaceIds)
-            .isFilter('deleted_at', null)
-            .order('inspected_at', ascending: false);
-    final inspectionsData = inspectionRows
-        .map((v) => Map<String, dynamic>.from(v))
-        .toList();
-    final inspectionIds = inspectionsData.map((v) => v['id'] as String).toList();
-    final findingRows = inspectionIds.isEmpty
-        ? <dynamic>[]
-        : await client
-            .from('findings')
-            .select()
-            .inFilter('inspection_id', inspectionIds)
-            .isFilter('deleted_at', null)
-            .order('sort_order');
-    final findingsData = findingRows
-        .map((v) => Map<String, dynamic>.from(v))
-        .toList();
+    final inspectionRows =
+        spaceIds.isEmpty
+            ? <dynamic>[]
+            : await client
+                .from('inspections')
+                .select()
+                .inFilter('space_id', spaceIds)
+                .isFilter('deleted_at', null)
+                .order('inspected_at', ascending: false);
+    final inspectionsData =
+        inspectionRows.map((v) => Map<String, dynamic>.from(v)).toList();
+    final inspectionIds =
+        inspectionsData.map((v) => v['id'] as String).toList();
+    final findingRows =
+        inspectionIds.isEmpty
+            ? <dynamic>[]
+            : await client
+                .from('findings')
+                .select()
+                .inFilter('inspection_id', inspectionIds)
+                .isFilter('deleted_at', null)
+                .order('sort_order');
+    final findingsData =
+        findingRows.map((v) => Map<String, dynamic>.from(v)).toList();
     final findingIds = findingsData.map((v) => v['id'] as String).toList();
-    final photoRows = findingIds.isEmpty
-        ? <dynamic>[]
-        : await client
-            .from('finding_photos')
-            .select()
-            .inFilter('finding_id', findingIds)
-            .order('sort_order');
+    final photoRows =
+        findingIds.isEmpty
+            ? <dynamic>[]
+            : await client
+                .from('finding_photos')
+                .select()
+                .inFilter('finding_id', findingIds)
+                .order('sort_order');
     final issueRows = await client.from('issue_types').select('id,label');
     final locationRows = await client
         .from('finding_locations')
         .select('id,label');
 
     final sections = {
-      for (final row in sectionRows)
-        row['id'] as String: row['name'] as String,
+      for (final row in sectionRows) row['id'] as String: row['name'] as String,
     };
+    final foldersByProject = <String, List<AuditFolder>>{};
+    for (final raw in sectionRows) {
+      final row = Map<String, dynamic>.from(raw);
+      foldersByProject
+          .putIfAbsent(row['project_id'] as String, () => [])
+          .add(
+            AuditFolder(
+              id: row['id'] as String,
+              name: row['name'] as String,
+              kind: row['kind'] as String? ?? 'Space',
+              parentId: row['parent_section_id'] as String?,
+            ),
+          );
+    }
     final issueLabels = {
       for (final row in issueRows) row['id'] as String: row['label'] as String,
     };
@@ -273,28 +286,32 @@ class SupabaseRepository {
         path,
       );
       if (bytes == null) continue;
-      photosByFinding.putIfAbsent(row['finding_id'] as String, () => []).add(
-        PhotoData(
-          id: row['id'] as String,
-          name: row['original_filename'] as String? ?? path.split('/').last,
-          bytes: bytes,
-          remotePath: path,
-        ),
-      );
+      photosByFinding
+          .putIfAbsent(row['finding_id'] as String, () => [])
+          .add(
+            PhotoData(
+              id: row['id'] as String,
+              name: row['original_filename'] as String? ?? path.split('/').last,
+              bytes: bytes,
+              remotePath: path,
+            ),
+          );
     }
 
     final findingsByInspection = <String, List<Finding>>{};
     final customIssues = <String>{...localProfile.customIssueTypes};
     for (final row in findingsData) {
       final customIssue = (row['custom_issue_type'] as String?)?.trim();
-      final type = customIssue?.isNotEmpty == true
-          ? customIssue!
-          : issueLabels[row['issue_type_id']] ?? 'Other';
+      final type =
+          customIssue?.isNotEmpty == true
+              ? customIssue!
+              : issueLabels[row['issue_type_id']] ?? 'Other';
       if (customIssue?.isNotEmpty == true) customIssues.add(customIssue!);
       final customLocation = (row['custom_location'] as String?)?.trim();
-      final location = customLocation?.isNotEmpty == true
-          ? customLocation!
-          : locationLabels[row['location_id']] ?? 'Other';
+      final location =
+          customLocation?.isNotEmpty == true
+              ? customLocation!
+              : locationLabels[row['location_id']] ?? 'Other';
       findingsByInspection
           .putIfAbsent(row['inspection_id'] as String, () => [])
           .add(
@@ -323,12 +340,12 @@ class SupabaseRepository {
         inspectionId: inspection?['id'] as String?,
         name: row['name'] as String,
         section: sections[row['section_id']] ?? 'Standalone spaces',
-        owner: row['owner_or_occupant'] as String? ?? '',
       );
       if (inspection != null) {
-        space.inspectedAt = DateTime.tryParse(
-          inspection['inspected_at'] as String? ?? '',
-        )?.toLocal();
+        space.inspectedAt =
+            DateTime.tryParse(
+              inspection['inspected_at'] as String? ?? '',
+            )?.toLocal();
         space.noIssues = inspection['no_issues'] as bool? ?? false;
         space.findings.addAll(
           findingsByInspection[inspection['id']] ?? <Finding>[],
@@ -361,12 +378,15 @@ class SupabaseRepository {
         AuditProject(
           id: row['id'] as String,
           organisationId: row['organisation_id'] as String,
+          projectType: row['project_type'] as String? ?? 'other',
           number: row['project_number'] as String,
           name: row['name'] as String,
           site: row['site_address'] as String? ?? '',
-          createdAt: DateTime.tryParse(row['project_date'] as String? ?? '') ??
+          createdAt:
+              DateTime.tryParse(row['project_date'] as String? ?? '') ??
               DateTime.now(),
           spaces: spacesByProject[row['id']] ?? <SpaceAudit>[],
+          folders: foldersByProject[row['id']] ?? <AuditFolder>[],
           coverPhoto: cover,
           preamble: row['preamble'] as String? ?? '',
           conclusion: row['conclusion'] as String? ?? '',
@@ -379,9 +399,20 @@ class SupabaseRepository {
         .select()
         .eq('organisation_id', organisationId)
         .limit(1);
-    final profileRow = profileRows.isEmpty
-        ? null
-        : Map<String, dynamic>.from(profileRows.first);
+    final profileRow =
+        profileRows.isEmpty
+            ? null
+            : Map<String, dynamic>.from(profileRows.first);
+    final remoteTemplateValues =
+        profileRow?['project_templates'] as List<dynamic>? ?? const [];
+    final remoteTemplates =
+        remoteTemplateValues
+            .map(
+              (item) => ProjectTemplate.fromJson(
+                Map<String, dynamic>.from(item as Map),
+              ),
+            )
+            .toList();
     final profile = EngineerProfile(
       name: profileRow?['engineer_name'] as String? ?? localProfile.name,
       designation:
@@ -389,12 +420,23 @@ class SupabaseRepository {
       organisation:
           profileRow?['organisation_name'] as String? ??
           localProfile.organisation,
-      licence:
-          profileRow?['licence_number'] as String? ?? localProfile.licence,
+      licence: profileRow?['licence_number'] as String? ?? localProfile.licence,
       phone: profileRow?['phone'] as String? ?? localProfile.phone,
       email: profileRow?['email'] as String? ?? localProfile.email,
       darkMode: localProfile.darkMode,
       customIssueTypes: customIssues.toList()..sort(),
+      customProjectTemplates:
+          (profileRow?['custom_project_templates'] as List<dynamic>?)
+              ?.cast<String>() ??
+          localProfile.customProjectTemplates,
+      customSpaceTemplates:
+          (profileRow?['custom_space_templates'] as List<dynamic>?)
+              ?.cast<String>() ??
+          localProfile.customSpaceTemplates,
+      projectTemplates:
+          remoteTemplates.isEmpty
+              ? localProfile.projectTemplates
+              : remoteTemplates,
     );
     await _loadProfileAsset(
       profile,
@@ -463,6 +505,10 @@ class SupabaseRepository {
       'email': profile.email.isEmpty ? null : profile.email,
       'letterhead_object_path': profile.letterheadRemotePath,
       'signature_object_path': profile.signatureRemotePath,
+      'custom_project_templates': profile.customProjectTemplates,
+      'custom_space_templates': profile.customSpaceTemplates,
+      'project_templates':
+          profile.projectTemplates.map((value) => value.toJson()).toList(),
     }, onConflict: 'organisation_id');
   }
 
@@ -516,6 +562,7 @@ class SupabaseRepository {
       profile.letterheadRemotePath = path;
     }
   }
+
   String _date(DateTime value) =>
       '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
   String _mime(String filename) {

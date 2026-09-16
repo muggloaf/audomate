@@ -68,7 +68,11 @@ class AuditStore extends ChangeNotifier {
       }
     }
 
-    fill(profile.name, metadata['full_name'] as String?, (v) => profile.name = v);
+    fill(
+      profile.name,
+      metadata['full_name'] as String?,
+      (v) => profile.name = v,
+    );
     fill(
       profile.organisation,
       metadata['organisation_name'] as String?,
@@ -157,15 +161,16 @@ class AuditStore extends ChangeNotifier {
   }
 
   void deleteProject(AuditProject project) {
-    if (project.coverPhoto != null)
-      {pendingDeletes.add(
+    if (project.coverPhoto != null) {
+      pendingDeletes.add(
         PendingDelete(
           table: 'projects',
           id: project.id,
           bucket: 'audit-media',
           objectPath: project.coverPhoto!.remotePath,
         ),
-      );}
+      );
+    }
     for (final space in project.spaces) {
       for (final finding in space.findings) {
         for (final photo in finding.photos) {
@@ -205,7 +210,10 @@ class AuditStore extends ChangeNotifier {
         await _saveNow();
         return;
       }
-      final remote = await _remote.pullSnapshot(profile);
+      final remote = await _remote.pullSnapshot(
+        profile,
+        localProjects: projects,
+      );
       if (_changeRevision != syncRevision) {
         pendingSync = true;
         await _saveNow();
@@ -251,6 +259,7 @@ class AuditStore extends ChangeNotifier {
   void dispose() {
     _saveTimer?.cancel();
     _syncTimer?.cancel();
+    unawaited(_repository.close());
     super.dispose();
   }
 }

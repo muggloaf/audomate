@@ -182,7 +182,10 @@ class SupabaseRepository {
     }
   }
 
-  Future<RemoteSnapshot> pullSnapshot(EngineerProfile localProfile) async {
+  Future<RemoteSnapshot> pullSnapshot(
+    EngineerProfile localProfile, {
+    List<AuditProject> localProjects = const [],
+  }) async {
     final organisationId = await currentOrganisationId();
     final user = client.auth.currentUser!;
     final projectRows = await client
@@ -277,14 +280,31 @@ class SupabaseRepository {
       for (final row in locationRows)
         row['id'] as String: row['label'] as String,
     };
+    final cachedPhotos = <String, PhotoData>{};
+    void cache(PhotoData? photo) {
+      if (photo?.remotePath != null) cachedPhotos[photo!.remotePath!] = photo;
+    }
+
+    cache(localProfile.letterhead);
+    cache(localProfile.signature);
+    for (final project in localProjects) {
+      cache(project.coverPhoto);
+      for (final room in project.spaces) {
+        for (final finding in room.findings) {
+          for (final photo in finding.photos) {
+            cache(photo);
+          }
+        }
+      }
+    }
     final photosByFinding = <String, List<PhotoData>>{};
     for (final raw in photoRows) {
       final row = Map<String, dynamic>.from(raw);
       final path = row['object_path'] as String;
-      final bytes = await _tryDownload(
-        SupabaseStorageService.auditMediaBucket,
-        path,
-      );
+      final cached = cachedPhotos[path];
+      final bytes =
+          cached?.bytes ??
+          await _tryDownload(SupabaseStorageService.auditMediaBucket, path);
       if (bytes == null) continue;
       photosByFinding
           .putIfAbsent(row['finding_id'] as String, () => [])
@@ -361,10 +381,13 @@ class SupabaseRepository {
       final coverPath = row['cover_object_path'] as String?;
       PhotoData? cover;
       if (coverPath != null) {
-        final bytes = await _tryDownload(
-          SupabaseStorageService.auditMediaBucket,
-          coverPath,
-        );
+        final cached = cachedPhotos[coverPath];
+        final bytes =
+            cached?.bytes ??
+            await _tryDownload(
+              SupabaseStorageService.auditMediaBucket,
+              coverPath,
+            );
         if (bytes != null) {
           cover = PhotoData(
             id: _objectId(coverPath),
@@ -441,11 +464,13 @@ class SupabaseRepository {
     await _loadProfileAsset(
       profile,
       profileRow?['letterhead_object_path'] as String?,
+      cachedPhotos: cachedPhotos,
       signature: false,
     );
     await _loadProfileAsset(
       profile,
       profileRow?['signature_object_path'] as String?,
+      cachedPhotos: cachedPhotos,
       signature: true,
     );
     return RemoteSnapshot(projects: projects, profile: profile);
@@ -540,13 +565,14 @@ class SupabaseRepository {
   Future<void> _loadProfileAsset(
     EngineerProfile profile,
     String? path, {
+    required Map<String, PhotoData> cachedPhotos,
     required bool signature,
   }) async {
     if (path == null) return;
-    final bytes = await _tryDownload(
-      SupabaseStorageService.reportAssetsBucket,
-      path,
-    );
+    final cached = cachedPhotos[path];
+    final bytes =
+        cached?.bytes ??
+        await _tryDownload(SupabaseStorageService.reportAssetsBucket, path);
     if (bytes == null) return;
     final photo = PhotoData(
       id: _objectId(path),

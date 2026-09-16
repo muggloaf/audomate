@@ -43,8 +43,9 @@ class _ProjectScreenState extends State<ProjectScreen> {
         project.spaces.where((room) {
           if (room.sectionId != folderId) return false;
           final text = '${room.name} ${room.section}'.toLowerCase();
-          if (query.isNotEmpty && !text.contains(query.toLowerCase()))
-            {return false;}
+          if (query.isNotEmpty && !text.contains(query.toLowerCase())) {
+            return false;
+          }
           if (onlyNoIssues && !room.noIssues) return false;
           if (selectedIssues.isNotEmpty &&
               !selectedIssues.every(
@@ -183,77 +184,79 @@ class _ProjectScreenState extends State<ProjectScreen> {
             (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
           );
     final isCollapsed = collapsed.contains(folder.id);
-    return Padding(
-      padding: EdgeInsets.only(left: depth * 12.0, bottom: 10),
-      child: Card(
-        child: Column(
-          children: [
-            ListTile(
-              onTap:
-                  () => setState(
-                    () =>
-                        isCollapsed
-                            ? collapsed.remove(folder.id)
-                            : collapsed.add(folder.id),
+    final node = Column(
+      children: [
+        ListTile(
+          onTap:
+              () => setState(
+                () =>
+                    isCollapsed
+                        ? collapsed.remove(folder.id)
+                        : collapsed.add(folder.id),
+              ),
+          leading: Icon(
+            isCollapsed ? Icons.folder_outlined : Icons.folder_open_outlined,
+            color: forest,
+          ),
+          title: Text(
+            folder.name,
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          subtitle: Text(_folderSummary(folder)),
+          trailing: PopupMenuButton<String>(
+            onSelected:
+                (value) => switch (value) {
+                  'room' => _addRoom(folder),
+                  'child' => _addFolder(parent: folder),
+                  'edit' => _editFolder(folder),
+                  'delete' => _deleteFolder(folder),
+                  _ => null,
+                },
+            itemBuilder:
+                (_) => const [
+                  PopupMenuItem(value: 'room', child: Text('Add room')),
+                  PopupMenuItem(
+                    value: 'child',
+                    child: Text('Add nested space'),
                   ),
-              leading: Icon(
-                isCollapsed
-                    ? Icons.folder_outlined
-                    : Icons.folder_open_outlined,
-                color: forest,
-              ),
-              title: Text(
-                folder.name,
-                style: const TextStyle(fontWeight: FontWeight.w700),
-              ),
-              subtitle: Text(_folderSummary(folder)),
-              trailing: PopupMenuButton<String>(
-                onSelected:
-                    (value) => switch (value) {
-                      'room' => _addRoom(folder),
-                      'child' => _addFolder(parent: folder),
-                      'edit' => _editFolder(folder),
-                      'delete' => _deleteFolder(folder),
-                      _ => null,
-                    },
-                itemBuilder:
-                    (_) => const [
-                      PopupMenuItem(value: 'room', child: Text('Add room')),
-                      PopupMenuItem(
-                        value: 'child',
-                        child: Text('Add nested space'),
-                      ),
-                      PopupMenuItem(value: 'edit', child: Text('Edit space')),
-                      PopupMenuItem(
-                        value: 'delete',
-                        child: Text('Delete space'),
-                      ),
-                    ],
+                  PopupMenuItem(value: 'edit', child: Text('Edit space')),
+                  PopupMenuItem(value: 'delete', child: Text('Delete space')),
+                ],
+          ),
+        ),
+        if (!isCollapsed) ...[
+          if (rooms.isEmpty && children.isEmpty)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 0, 16, 15),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Empty space — add a room when ready.',
+                  style: TextStyle(color: muted, fontSize: 13),
+                ),
               ),
             ),
-            if (!isCollapsed) ...[
-              if (rooms.isEmpty && children.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(16, 0, 16, 15),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      'Empty space — add a room when ready.',
-                      style: TextStyle(color: muted, fontSize: 13),
-                    ),
-                  ),
-                ),
-              ...rooms.map((room) => _roomTile(folder, room)),
-              ...children.map((child) => _folderCard(child, depth + 1)),
-            ],
-          ],
-        ),
-      ),
+          ...rooms.map((room) => _roomTile(folder, room)),
+          ...children.map((child) => _folderCard(child, depth + 1)),
+        ],
+      ],
+    );
+    if (depth == 0) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Card(clipBehavior: Clip.antiAlias, child: node),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 6, 14, 14),
+      child: Card(clipBehavior: Clip.antiAlias, child: node),
     );
   }
 
   Widget _roomTile(AuditFolder folder, SpaceAudit room) => ListTile(
-    contentPadding: const EdgeInsets.only(left: 22, right: 8),
+    contentPadding: const EdgeInsets.only(left: 32, right: 16),
+    minLeadingWidth: 28,
+    horizontalTitleGap: 12,
     leading: Icon(
       room.noIssues
           ? Icons.check_circle_outline
@@ -603,18 +606,16 @@ class _ProjectScreenState extends State<ProjectScreen> {
       _message('Room names must be unique inside a space.', error: true);
       return;
     }
-    setState(
-      () {
-        _revealFolder(folder);
-        project.spaces.add(
-          SpaceAudit(
-            name: name.text.trim(),
-            section: folder.name,
-            sectionId: folder.id,
-          ),
-        );
-      },
-    );
+    setState(() {
+      _revealFolder(folder);
+      project.spaces.add(
+        SpaceAudit(
+          name: name.text.trim(),
+          section: folder.name,
+          sectionId: folder.id,
+        ),
+      );
+    });
     AuditScope.of(context).changed();
     _message('${name.text.trim()} added');
   }
@@ -645,8 +646,9 @@ class _ProjectScreenState extends State<ProjectScreen> {
 
   Future<void> _editFolder(AuditFolder folder) async {
     final name = TextEditingController(text: folder.name);
-    if (!await _textDialog('Edit space', 'Space name *', name) || !mounted)
-      {return;}
+    if (!await _textDialog('Edit space', 'Space name *', name) || !mounted) {
+      return;
+    }
     if (_duplicateFolder(
       name.text.trim(),
       folder.parentId,
@@ -669,8 +671,9 @@ class _ProjectScreenState extends State<ProjectScreen> {
 
   Future<void> _editRoom(AuditFolder folder, SpaceAudit room) async {
     final name = TextEditingController(text: room.name);
-    if (!await _textDialog('Edit room', 'Room name *', name) || !mounted)
-      {return;}
+    if (!await _textDialog('Edit room', 'Room name *', name) || !mounted) {
+      return;
+    }
     if (project.spaces.any(
       (other) =>
           other.id != room.id &&
@@ -752,8 +755,9 @@ class _ProjectScreenState extends State<ProjectScreen> {
     if (!await _confirm(
       'Delete ${room.name}?',
       'Its inspection, issues and photos will also be deleted.',
-    ))
-      {return;}
+    )) {
+      return;
+    }
     if (!mounted) return;
     setState(() => AuditScope.of(context).deleteSpace(project, room));
     _message('Room deleted');
@@ -779,8 +783,9 @@ class _ProjectScreenState extends State<ProjectScreen> {
     if (!await _confirm(
       'Delete ${folder.name}?',
       'This deletes ${rooms.length} rooms and every nested space.',
-    ))
-      {return;}
+    )) {
+      return;
+    }
     if (!mounted) return;
     final store = AuditScope.of(context);
     setState(() {
@@ -800,8 +805,9 @@ class _ProjectScreenState extends State<ProjectScreen> {
     if (!await _confirm(
       'Delete this project?',
       'All spaces, rooms, inspections, findings and cloud files will be deleted.',
-    ))
-      {return;}
+    )) {
+      return;
+    }
     if (!mounted) return;
     AuditScope.of(context).deleteProject(project);
     Navigator.pop(context);

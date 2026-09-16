@@ -1,9 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
+import 'package:drift/drift.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'local_database.dart';
 import 'models.dart';
 
 class LocalSnapshot {
@@ -44,20 +45,38 @@ class PendingDelete {
   );
 }
 
-/// A deliberately small persistence boundary. Supabase can later implement the
-/// same load/save contract while this repository remains the offline source.
+/// Per-user relational persistence with a one-time importer for legacy JSON
+/// snapshots. Supabase remains a separate background synchronization boundary.
 class LocalRepository {
-  LocalRepository({File? file}) : _file = file, _explicitFile = file != null;
+  LocalRepository({File? file, AudomateDatabase? database})
+    : _file = file,
+      _database = database,
+      _explicitFile = file != null;
 
   static const _guestFileName = 'audomate_guest_data.json';
   final bool _explicitFile;
   String? _userId;
   File? _file;
+  AudomateDatabase? _database;
 
   void useUser(String? userId) {
     if (_explicitFile || _userId == userId) return;
     _userId = userId;
     _file = null;
+    _database?.close();
+    _database = null;
+  }
+
+  AudomateDatabase get _db {
+    if (_database != null) return _database!;
+    final safe = (_userId ?? 'guest').replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_');
+    return _database = AudomateDatabase('audomate_$safe');
+  }
+
+  Future<void> close() async {
+    final database = _database;
+    _database = null;
+    if (database != null) await database.close();
   }
 
   Future<File> _dataFile() async {
@@ -71,6 +90,25 @@ class LocalRepository {
   }
 
   Future<LocalSnapshot?> load() async {
+    if (!_explicitFile) {
+      final databaseSnapshot = await _loadDatabase();
+      if (databaseSnapshot != null) return databaseSnapshot;
+      final legacy = await _loadLegacyJson();
+      if (legacy != null) {
+        await _saveDatabase(
+          legacy.projects,
+          legacy.profile,
+          pendingSync: legacy.pendingSync,
+          pendingDeletes: legacy.pendingDeletes,
+        );
+        return legacy;
+      }
+      return null;
+    }
+    return _loadLegacyJson();
+  }
+
+  Future<LocalSnapshot?> _loadLegacyJson() async {
     try {
       final file = await _dataFile();
       if (!await file.exists()) return null;
@@ -101,6 +139,15 @@ class LocalRepository {
     bool pendingSync = true,
     List<PendingDelete> pendingDeletes = const [],
   }) async {
+    if (!_explicitFile) {
+      await _saveDatabase(
+        projects,
+        profile,
+        pendingSync: pendingSync,
+        pendingDeletes: pendingDeletes,
+      );
+      return;
+    }
     final file = await _dataFile();
     final temp = File('${file.path}.tmp');
     final payload = jsonEncode({
@@ -115,6 +162,299 @@ class LocalRepository {
     if (await file.exists()) await file.delete();
     await temp.rename(file.path);
   }
+
+  Future<LocalSnapshot?> _loadDatabase() async {
+    final stateRows = await _db.select(_db.localStateRows).get();
+    if (stateRows.isEmpty) return null;
+    final state = {for (final row in stateRows) row.key: row.value};
+    final projectRows =
+        await (_db.select(_db.localProjects)
+          ..orderBy([(row) => OrderingTerm.asc(row.sortOrder)])).get();
+    final folderRows =
+        await (_db.select(_db.localFolders)
+          ..orderBy([(row) => OrderingTerm.asc(row.sortOrder)])).get();
+    final roomRows =
+        await (_db.select(_db.localRooms)
+          ..orderBy([(row) => OrderingTerm.asc(row.sortOrder)])).get();
+    final findingRows =
+        await (_db.select(_db.localFindings)
+          ..orderBy([(row) => OrderingTerm.asc(row.sortOrder)])).get();
+    final photoRows =
+        await (_db.select(_db.localPhotos)
+          ..orderBy([(row) => OrderingTerm.asc(row.sortOrder)])).get();
+
+    final photosByOwner = <String, List<PhotoData>>{};
+    for (final row in photoRows) {
+      photosByOwner
+          .putIfAbsent('${row.ownerKind}:${row.ownerId}', () => [])
+          .add(
+            PhotoData(
+              id: row.id,
+              name: row.name,
+              bytes: Uint8List.fromList(row.bytes),
+              remotePath: row.remotePath,
+            ),
+          );
+    }
+    final findingsByRoom = <String, List<Finding>>{};
+    for (final row in findingRows) {
+      findingsByRoom
+          .putIfAbsent(row.roomId, () => [])
+          .add(
+            Finding(
+              id: row.id,
+              type: row.type,
+              location: row.location,
+              severity: normalizeSeverity(row.severity),
+              notes: row.notes,
+              recommendation: row.recommendation,
+              photos: photosByOwner['finding:${row.id}'] ?? <PhotoData>[],
+            ),
+          );
+    }
+    final roomsByProject = <String, List<SpaceAudit>>{};
+    for (final row in roomRows) {
+      final room =
+          SpaceAudit(
+              id: row.id,
+              sectionId: row.folderId,
+              inspectionId: row.inspectionId,
+              name: row.name,
+              section: row.sectionName,
+            )
+            ..inspectedAt = row.inspectedAt
+            ..noIssues = row.noIssues
+            ..findings.addAll(findingsByRoom[row.id] ?? const <Finding>[]);
+      roomsByProject.putIfAbsent(row.projectId, () => []).add(room);
+    }
+    final foldersByProject = <String, List<AuditFolder>>{};
+    for (final row in folderRows) {
+      foldersByProject
+          .putIfAbsent(row.projectId, () => [])
+          .add(
+            AuditFolder(
+              id: row.id,
+              name: row.name,
+              kind: row.kind,
+              parentId: row.parentId,
+            ),
+          );
+    }
+    final projects =
+        projectRows.map((row) {
+          final covers = photosByOwner['project:${row.id}'];
+          return AuditProject(
+            id: row.id,
+            organisationId: row.organisationId,
+            projectType: row.projectType,
+            number: row.number,
+            name: row.name,
+            site: row.site,
+            createdAt: row.createdAt,
+            preamble: row.preamble,
+            conclusion: row.conclusion,
+            spaces: roomsByProject[row.id] ?? <SpaceAudit>[],
+            folders: foldersByProject[row.id] ?? <AuditFolder>[],
+            coverPhoto: covers?.firstOrNull,
+          );
+        }).toList();
+
+    final profileRows = await _db.select(_db.localProfiles).get();
+    final profile =
+        profileRows.isEmpty
+            ? EngineerProfile()
+            : _profileFromJson(
+              Map<String, dynamic>.from(
+                jsonDecode(profileRows.first.payload) as Map,
+              ),
+            );
+    profile.letterhead = photosByOwner['profile:letterhead']?.firstOrNull;
+    profile.signature = photosByOwner['profile:signature']?.firstOrNull;
+    final pendingRows = await _db.select(_db.localPendingDeletes).get();
+    return LocalSnapshot(
+      projects: projects,
+      profile: profile,
+      pendingSync: state['pending_sync'] != 'false',
+      pendingDeletes:
+          pendingRows
+              .map(
+                (row) => PendingDelete(
+                  table: row.targetTable,
+                  id: row.remoteId,
+                  bucket: row.bucket,
+                  objectPath: row.objectPath,
+                ),
+              )
+              .toList(),
+    );
+  }
+
+  Future<void> _saveDatabase(
+    List<AuditProject> projects,
+    EngineerProfile profile, {
+    required bool pendingSync,
+    required List<PendingDelete> pendingDeletes,
+  }) async {
+    final projectRows = <LocalProject>[];
+    final folderRows = <LocalFolder>[];
+    final roomRows = <LocalRoom>[];
+    final findingRows = <LocalFinding>[];
+    final photoRows = <LocalPhoto>[];
+    for (var projectIndex = 0; projectIndex < projects.length; projectIndex++) {
+      final project = projects[projectIndex];
+      projectRows.add(
+        LocalProject(
+          id: project.id,
+          organisationId: project.organisationId,
+          projectType: project.projectType,
+          number: project.number,
+          name: project.name,
+          site: project.site,
+          createdAt: project.createdAt,
+          preamble: project.preamble,
+          conclusion: project.conclusion,
+          sortOrder: projectIndex,
+        ),
+      );
+      if (project.coverPhoto != null) {
+        photoRows.add(
+          _localPhoto(project.coverPhoto!, 'project', project.id, 0),
+        );
+      }
+      for (var index = 0; index < project.folders.length; index++) {
+        final folder = project.folders[index];
+        folderRows.add(
+          LocalFolder(
+            id: folder.id,
+            projectId: project.id,
+            parentId: folder.parentId,
+            name: folder.name,
+            kind: folder.kind,
+            sortOrder: index,
+          ),
+        );
+      }
+      for (var roomIndex = 0; roomIndex < project.spaces.length; roomIndex++) {
+        final room = project.spaces[roomIndex];
+        roomRows.add(
+          LocalRoom(
+            id: room.id,
+            projectId: project.id,
+            folderId: room.sectionId,
+            inspectionId: room.inspectionId,
+            name: room.name,
+            sectionName: room.section,
+            inspectedAt: room.inspectedAt,
+            noIssues: room.noIssues,
+            sortOrder: roomIndex,
+          ),
+        );
+        for (
+          var findingIndex = 0;
+          findingIndex < room.findings.length;
+          findingIndex++
+        ) {
+          final finding = room.findings[findingIndex];
+          findingRows.add(
+            LocalFinding(
+              id: finding.id,
+              roomId: room.id,
+              type: finding.type,
+              location: finding.location,
+              severity: normalizeSeverity(finding.severity),
+              notes: finding.notes,
+              recommendation: finding.recommendation,
+              sortOrder: findingIndex,
+            ),
+          );
+          for (
+            var photoIndex = 0;
+            photoIndex < finding.photos.length;
+            photoIndex++
+          ) {
+            photoRows.add(
+              _localPhoto(
+                finding.photos[photoIndex],
+                'finding',
+                finding.id,
+                photoIndex,
+              ),
+            );
+          }
+        }
+      }
+    }
+    if (profile.letterhead != null) {
+      photoRows.add(
+        _localPhoto(profile.letterhead!, 'profile', 'letterhead', 0),
+      );
+    }
+    if (profile.signature != null) {
+      photoRows.add(_localPhoto(profile.signature!, 'profile', 'signature', 0));
+    }
+    final profileJson =
+        _profileToJson(profile)
+          ..remove('letterhead')
+          ..remove('signature');
+
+    await _db.transaction(() async {
+      await _db.delete(_db.localPendingDeletes).go();
+      await _db.delete(_db.localPhotos).go();
+      await _db.delete(_db.localFindings).go();
+      await _db.delete(_db.localRooms).go();
+      await _db.delete(_db.localFolders).go();
+      await _db.delete(_db.localProjects).go();
+      await _db.delete(_db.localProfiles).go();
+      await _db.delete(_db.localStateRows).go();
+      await _db.batch((batch) {
+        batch.insertAll(_db.localProjects, projectRows);
+        batch.insertAll(_db.localFolders, folderRows);
+        batch.insertAll(_db.localRooms, roomRows);
+        batch.insertAll(_db.localFindings, findingRows);
+        batch.insertAll(_db.localPhotos, photoRows);
+        batch.insert(
+          _db.localProfiles,
+          LocalProfile(id: 'current', payload: jsonEncode(profileJson)),
+        );
+        batch.insertAll(
+          _db.localPendingDeletes,
+          pendingDeletes
+              .map(
+                (item) => LocalPendingDeletesCompanion.insert(
+                  targetTable: item.table,
+                  remoteId: item.id,
+                  bucket: Value(item.bucket),
+                  objectPath: Value(item.objectPath),
+                ),
+              )
+              .toList(),
+        );
+        batch.insertAll(_db.localStateRows, [
+          LocalStateRow(key: 'pending_sync', value: '$pendingSync'),
+          LocalStateRow(
+            key: 'saved_at',
+            value: DateTime.now().toUtc().toIso8601String(),
+          ),
+          const LocalStateRow(key: 'migration_complete', value: 'true'),
+        ]);
+      });
+    });
+  }
+
+  LocalPhoto _localPhoto(
+    PhotoData photo,
+    String ownerKind,
+    String ownerId,
+    int sortOrder,
+  ) => LocalPhoto(
+    id: photo.id,
+    ownerKind: ownerKind,
+    ownerId: ownerId,
+    name: photo.name,
+    bytes: photo.bytes,
+    remotePath: photo.remotePath,
+    sortOrder: sortOrder,
+  );
 
   Map<String, dynamic> _photoToJson(PhotoData? p) =>
       p == null

@@ -1,0 +1,75 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+/supabase/
+
+# Flutter-generated platform state
+/android/.gradle/
+/android/local.properties
+/android/key.properties
+*.jks
+*.keystore
+/ios/Flutter/ephemeral/
+/ios/Flutter/Generated.xcconfig
+/ios/Flutter/flutter_export_environment.sh
+/macos/Flutter/ephemeral/
+
+# Local configuration and credentials. Commit only example files.
+.env
+.env.*
+!.env.example
+supabase.local*.json
+!supabase.local.example.json
+
+# Supabase CLI state (schema, migrations and functions remain committed)
+/supabase/.branches/
+/supabase/.temp/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# Local reference/report extraction scratch files
+/.reference_extract/
+
+# Packaged outputs
+*.apk
+*.aab
+*.ipa
+*.p12
+*.mobileprovision

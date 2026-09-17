@@ -1,9 +1,12 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../app_state.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/search_picker.dart';
+
+enum _PhotoSource { camera, gallery }
 
 class AuditScreen extends StatefulWidget {
   const AuditScreen({super.key, required this.project, required this.space});
@@ -199,24 +202,26 @@ class _AuditScreenState extends State<AuditScreen> {
     final controller = TextEditingController(text: widget.space.name);
     final name = await showDialog<String>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Rename room'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(labelText: 'Room name *'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
+      builder:
+          (dialogContext) => AlertDialog(
+            title: const Text('Rename room'),
+            content: TextField(
+              controller: controller,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: 'Room name *'),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed:
+                    () => Navigator.pop(dialogContext, controller.text.trim()),
+                child: const Text('Save'),
+              ),
+            ],
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
     );
     if (name == null || name.isEmpty || !mounted) return;
     final duplicate = widget.project.spaces.any(
@@ -238,29 +243,32 @@ class _AuditScreenState extends State<AuditScreen> {
   Future<void> _deleteFinding(Finding finding) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Delete this issue?'),
-        content: const Text('Its notes and evidence photos will be deleted.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
+      builder:
+          (dialogContext) => AlertDialog(
+            title: const Text('Delete this issue?'),
+            content: const Text(
+              'Its notes and evidence photos will be deleted.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('Delete'),
+              ),
+            ],
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
     );
     if (confirmed != true || !mounted) return;
     setState(() {
       AuditScope.of(context).queueFindingDeletion(finding);
       widget.space.findings.remove(finding);
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Issue deleted')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Issue deleted')));
   }
 
   String _date(DateTime d) =>
@@ -369,6 +377,60 @@ class _FindingEditorState extends State<FindingEditor> {
   }
 
   Future<void> addPhotos() async {
+    final source = await showModalBottomSheet<_PhotoSource>(
+      context: context,
+      showDragHandle: true,
+      builder:
+          (sheetContext) => SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ListTile(
+                    leading: const Icon(Icons.camera_alt_outlined),
+                    title: const Text('Take photo'),
+                    subtitle: const Text('Open the camera'),
+                    onTap:
+                        () => Navigator.pop(sheetContext, _PhotoSource.camera),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.photo_library_outlined),
+                    title: const Text('Choose from gallery'),
+                    subtitle: const Text('Select one or more existing photos'),
+                    onTap:
+                        () => Navigator.pop(sheetContext, _PhotoSource.gallery),
+                  ),
+                ],
+              ),
+            ),
+          ),
+    );
+    if (source == null || !mounted) return;
+    if (source == _PhotoSource.camera) {
+      try {
+        final photo = await ImagePicker().pickImage(
+          source: ImageSource.camera,
+          imageQuality: 88,
+          maxWidth: 2400,
+        );
+        if (photo == null || !mounted) return;
+        final bytes = await photo.readAsBytes();
+        if (!mounted) return;
+        setState(
+          () => widget.finding.photos.add(
+            PhotoData(bytes: bytes, name: photo.name),
+          ),
+        );
+      } catch (_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open the camera.')),
+        );
+      }
+      return;
+    }
+
     final r = await FilePicker.platform.pickFiles(
       type: FileType.image,
       allowMultiple: true,
@@ -388,20 +450,23 @@ class _FindingEditorState extends State<FindingEditor> {
   Future<void> _deletePhoto(int index) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Delete this photo?'),
-        content: const Text('The cloud copy will also be removed after sync.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
+      builder:
+          (dialogContext) => AlertDialog(
+            title: const Text('Delete this photo?'),
+            content: const Text(
+              'The cloud copy will also be removed after sync.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('Delete'),
+              ),
+            ],
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
     );
     if (confirmed != true || !mounted) return;
     setState(() {
@@ -453,8 +518,9 @@ class _FindingEditorState extends State<FindingEditor> {
       if (custom == null || custom.isEmpty || !mounted) return;
       if (!store.profile.customIssueTypes.any(
         (v) => v.toLowerCase() == custom.toLowerCase(),
-      ))
-        {store.profile.customIssueTypes.add(custom);}
+      )) {
+        store.profile.customIssueTypes.add(custom);
+      }
       setState(() => widget.finding.type = custom);
       store.changed();
     } else {
@@ -469,8 +535,9 @@ class _FindingEditorState extends State<FindingEditor> {
       options: locations,
       selected: widget.finding.location,
     );
-    if (value != null && mounted)
-      {setState(() => widget.finding.location = value);}
+    if (value != null && mounted) {
+      setState(() => widget.finding.location = value);
+    }
   }
 
   @override
@@ -597,19 +664,21 @@ class _FindingEditorState extends State<FindingEditor> {
                     fit: StackFit.expand,
                     children: [
                       GestureDetector(
-                        onTap: () => showDialog<void>(
-                          context: context,
-                          builder: (_) => Dialog(
-                            backgroundColor: Colors.black,
-                            insetPadding: const EdgeInsets.all(16),
-                            child: InteractiveViewer(
-                              child: Image.memory(
-                                widget.finding.photos[i].bytes,
-                                fit: BoxFit.contain,
-                              ),
+                        onTap:
+                            () => showDialog<void>(
+                              context: context,
+                              builder:
+                                  (_) => Dialog(
+                                    backgroundColor: Colors.black,
+                                    insetPadding: const EdgeInsets.all(16),
+                                    child: InteractiveViewer(
+                                      child: Image.memory(
+                                        widget.finding.photos[i].bytes,
+                                        fit: BoxFit.contain,
+                                      ),
+                                    ),
+                                  ),
                             ),
-                          ),
-                        ),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(12),
                           child: Image.memory(

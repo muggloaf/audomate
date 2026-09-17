@@ -45,15 +45,19 @@ class ReportService {
     final wordmarkFont = pw.Font.ttf(
       await rootBundle.load('assets/fonts/Figtree-Variable.ttf'),
     );
+    final reportTheme = pw.ThemeData.withFont(
+      base: wordmarkFont,
+      bold: wordmarkFont,
+      italic: wordmarkFont,
+      boldItalic: wordmarkFont,
+    );
     final doc = pw.Document(
       title: '${project.name} Structural Audit',
       author: profile.name,
       creator: 'audomate',
-      theme: pw.ThemeData.withFont(
-        base: wordmarkFont,
-        bold: wordmarkFont,
-        italic: wordmarkFont,
-        boldItalic: wordmarkFont,
+      theme: reportTheme.copyWith(
+        defaultTextStyle: const pw.TextStyle(fontSize: 13),
+        paragraphStyle: const pw.TextStyle(fontSize: 13, lineSpacing: 5),
       ),
     );
     final cover =
@@ -127,7 +131,7 @@ class ReportService {
                 pw.SizedBox(height: 8),
                 if (letterhead != null)
                   pw.Container(
-                    height: 70,
+                    height: 110,
                     alignment: pw.Alignment.centerLeft,
                     child: pw.Image(letterhead, fit: pw.BoxFit.contain),
                   ),
@@ -145,7 +149,7 @@ class ReportService {
                       : 'STRUCTURAL AUDIT REPORT',
                   style: pw.TextStyle(
                     color: green,
-                    fontSize: 12,
+                    fontSize: 14,
                     fontWeight: pw.FontWeight.bold,
                     letterSpacing: 2,
                   ),
@@ -154,14 +158,14 @@ class ReportService {
                 pw.Text(
                   project.name,
                   style: pw.TextStyle(
-                    fontSize: 30,
+                    fontSize: 32,
                     fontWeight: pw.FontWeight.bold,
                   ),
                 ),
                 pw.SizedBox(height: 10),
                 pw.Text(
                   project.site,
-                  style: pw.TextStyle(fontSize: 13, color: grey),
+                  style: pw.TextStyle(fontSize: 15, color: grey),
                 ),
                 if (issueFilters.isNotEmpty || noIssuesOnly) ...[
                   pw.SizedBox(height: 14),
@@ -201,7 +205,7 @@ class ReportService {
                     ),
                     pw.Text(
                       'Generated ${_date(DateTime.now())}',
-                      style: pw.TextStyle(fontSize: 9, color: grey),
+                      style: pw.TextStyle(fontSize: 11, color: grey),
                     ),
                   ],
                 ),
@@ -225,7 +229,7 @@ class ReportService {
                     pw.Text(
                       'Preamble',
                       style: pw.TextStyle(
-                        fontSize: 23,
+                        fontSize: 25,
                         color: green,
                         fontWeight: pw.FontWeight.bold,
                       ),
@@ -233,14 +237,14 @@ class ReportService {
                     pw.SizedBox(height: 14),
                     pw.Text(
                       project.preamble,
-                      style: const pw.TextStyle(fontSize: 12, lineSpacing: 4),
+                      style: const pw.TextStyle(fontSize: 14, lineSpacing: 5),
                     ),
                     pw.SizedBox(height: 26),
                   ],
                   pw.Text(
                     'Observation summary',
                     style: pw.TextStyle(
-                      fontSize: project.preamble.isEmpty ? 23 : 18,
+                      fontSize: project.preamble.isEmpty ? 25 : 20,
                       color: project.preamble.isEmpty ? green : null,
                       fontWeight: pw.FontWeight.bold,
                     ),
@@ -254,7 +258,7 @@ class ReportService {
                   pw.Text(
                     'Identified issues',
                     style: pw.TextStyle(
-                      fontSize: 14,
+                      fontSize: 16,
                       fontWeight: pw.FontWeight.bold,
                     ),
                   ),
@@ -262,7 +266,7 @@ class ReportService {
                   if (identifiedIssues.isEmpty)
                     pw.Text(
                       'No structural issues were identified.',
-                      style: const pw.TextStyle(fontSize: 10),
+                      style: const pw.TextStyle(fontSize: 12),
                     )
                   else
                     ...identifiedIssues.map(
@@ -270,7 +274,7 @@ class ReportService {
                         padding: const pw.EdgeInsets.only(bottom: 4),
                         child: pw.Text(
                           '- ${issue.key}: ${issue.value} ${issue.value == 1 ? 'observation' : 'observations'}',
-                          style: const pw.TextStyle(fontSize: 10),
+                          style: const pw.TextStyle(fontSize: 12),
                         ),
                       ),
                     ),
@@ -278,7 +282,7 @@ class ReportService {
                   pw.Text(
                     'Total issues: ${project.issueCount}  |  Priority A: $priorityACount',
                     style: pw.TextStyle(
-                      fontSize: 10,
+                      fontSize: 12,
                       fontWeight: pw.FontWeight.bold,
                     ),
                   ),
@@ -286,14 +290,14 @@ class ReportService {
                   pw.Text(
                     'Rectification classification',
                     style: pw.TextStyle(
-                      fontSize: 14,
+                      fontSize: 16,
                       fontWeight: pw.FontWeight.bold,
                     ),
                   ),
                   pw.SizedBox(height: 7),
                   pw.Text(
                     'A - attend within 1 month\nB - attend within 3 months\nMonitor - observe and reassess as advised',
-                    style: const pw.TextStyle(fontSize: 10, lineSpacing: 3),
+                    style: const pw.TextStyle(fontSize: 12, lineSpacing: 4),
                   ),
                 ],
               ),
@@ -310,14 +314,14 @@ class ReportService {
               children: [
                 pw.Text(
                   profile.organisation,
-                  style: pw.TextStyle(color: grey, fontSize: 9),
+                  style: pw.TextStyle(color: grey, fontSize: 11),
                 ),
                 pw.Row(
                   mainAxisSize: pw.MainAxisSize.min,
                   children: [
                     pw.Text(
                       '${project.number}  |  ',
-                      style: pw.TextStyle(color: grey, fontSize: 9),
+                      style: pw.TextStyle(color: grey, fontSize: 11),
                     ),
                     _wordmark(grey, green, ink, wordmarkFont),
                   ],
@@ -329,7 +333,7 @@ class ReportService {
               alignment: pw.Alignment.centerRight,
               child: pw.Text(
                 'Page ${c.pageNumber} of ${c.pagesCount}',
-                style: pw.TextStyle(color: grey, fontSize: 9),
+                style: pw.TextStyle(color: grey, fontSize: 11),
               ),
             ),
         build: (_) {
@@ -337,7 +341,7 @@ class ReportService {
             pw.Text(
               issuesOnly ? 'Filtered observations' : 'Detailed observations',
               style: pw.TextStyle(
-                fontSize: 23,
+                fontSize: 25,
                 color: green,
                 fontWeight: pw.FontWeight.bold,
               ),
@@ -418,7 +422,7 @@ class ReportService {
                   pw.Text(
                     'Conclusion',
                     style: pw.TextStyle(
-                      fontSize: 23,
+                      fontSize: 25,
                       color: green,
                       fontWeight: pw.FontWeight.bold,
                     ),
@@ -428,13 +432,13 @@ class ReportService {
                     project.conclusion.isEmpty
                         ? 'The observations and recommendations recorded in this report should be acted upon within the stated priority periods.'
                         : project.conclusion,
-                    style: const pw.TextStyle(fontSize: 12, lineSpacing: 4),
+                    style: const pw.TextStyle(fontSize: 14, lineSpacing: 5),
                   ),
                   pw.Spacer(),
                   if (signature != null)
                     pw.Container(
-                      height: 55,
-                      width: 150,
+                      height: 90,
+                      width: 210,
                       alignment: pw.Alignment.centerLeft,
                       child: pw.Image(signature, fit: pw.BoxFit.contain),
                     ),
@@ -550,7 +554,7 @@ class ReportService {
     required PdfColor grey,
   }) {
     final isRoot = depth == 0;
-    final fontSize = isRoot ? 17.0 : (depth == 1 ? 14.0 : 12.0);
+    final fontSize = isRoot ? 19.0 : (depth == 1 ? 16.0 : 14.0);
     return pw.Padding(
       padding: pw.EdgeInsets.only(
         left: depth > 2 ? 36 : depth * 18.0,
@@ -623,7 +627,7 @@ class ReportService {
               child: pw.Text(
                 number,
                 style: pw.TextStyle(
-                  fontSize: 14,
+                  fontSize: 16,
                   fontWeight: pw.FontWeight.bold,
                 ),
               ),
@@ -632,7 +636,7 @@ class ReportService {
               child: pw.Text(
                 'Room ${s.name}',
                 style: pw.TextStyle(
-                  fontSize: 14,
+                  fontSize: 16,
                   fontWeight: pw.FontWeight.bold,
                 ),
               ),
@@ -643,7 +647,7 @@ class ReportService {
       pw.SizedBox(height: 4),
       pw.Text(
         'Location: $locationPath${s.inspectedAt == null ? '' : '  |  Inspected ${_dateTime(s.inspectedAt!)}'}',
-        style: const pw.TextStyle(fontSize: 9),
+        style: const pw.TextStyle(fontSize: 11),
       ),
       pw.SizedBox(height: 8),
     ];
@@ -653,7 +657,7 @@ class ReportService {
           s.noIssues
               ? 'No structural issues were observed.'
               : 'Inspection not yet completed.',
-          style: const pw.TextStyle(fontSize: 11),
+          style: const pw.TextStyle(fontSize: 13),
         ),
       );
     }
@@ -663,7 +667,7 @@ class ReportService {
         pw.Text(
           f.type,
           style: pw.TextStyle(
-            fontSize: 12,
+            fontSize: 14,
             color: green,
             fontWeight: pw.FontWeight.bold,
           ),
@@ -671,26 +675,26 @@ class ReportService {
         pw.SizedBox(height: 3),
         pw.Text(
           'Observed at: ${f.location}',
-          style: const pw.TextStyle(fontSize: 10),
+          style: const pw.TextStyle(fontSize: 12),
         ),
         if (f.notes.isNotEmpty) ...[
           pw.SizedBox(height: 4),
           pw.Text(
             'Observation: ${f.notes}',
-            style: const pw.TextStyle(fontSize: 10),
+            style: const pw.TextStyle(fontSize: 12),
           ),
         ],
         if (f.recommendation.isNotEmpty) ...[
           pw.SizedBox(height: 4),
           pw.Text(
             'Recommendation: ${f.recommendation}',
-            style: const pw.TextStyle(fontSize: 10),
+            style: const pw.TextStyle(fontSize: 12),
           ),
         ],
         pw.SizedBox(height: 5),
         pw.Text(
           'Rectification classification: ${f.severity.replaceAll(' · ', ' - ')}',
-          style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
+          style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
         ),
         if (f.photos.isNotEmpty) ...[
           pw.SizedBox(height: 9),
@@ -741,7 +745,7 @@ class ReportService {
         child: pw.Image(pw.MemoryImage(p.bytes), fit: pw.BoxFit.cover),
       ),
       pw.SizedBox(height: 3),
-      pw.Text('Photo $number', style: const pw.TextStyle(fontSize: 8)),
+      pw.Text('Photo $number', style: const pw.TextStyle(fontSize: 10)),
     ],
   );
   static pw.Widget _brand(
@@ -763,13 +767,13 @@ class ReportService {
       children: [
         pw.TextSpan(
           text: 'made with ',
-          style: pw.TextStyle(font: font, fontSize: 7, color: grey),
+          style: pw.TextStyle(font: font, fontSize: 9, color: grey),
         ),
         pw.TextSpan(
           text: 'audo',
           style: pw.TextStyle(
             font: font,
-            fontSize: 8,
+            fontSize: 10,
             color: green,
             fontWeight: pw.FontWeight.bold,
             letterSpacing: -0.2,
@@ -779,7 +783,7 @@ class ReportService {
           text: 'mate.',
           style: pw.TextStyle(
             font: font,
-            fontSize: 8,
+            fontSize: 10,
             color: ink,
             fontWeight: pw.FontWeight.bold,
             letterSpacing: -0.2,

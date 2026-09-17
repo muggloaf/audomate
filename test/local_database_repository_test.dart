@@ -55,6 +55,8 @@ void main() {
       expect(restored.projects.single.coverPhoto!.bytes, [9, 8, 7]);
       expect(restored.pendingSync, isTrue);
       expect(restored.pendingDeletes.single.id, 'old-room');
+      expect(restored.syncOperation, isNotNull);
+      expect(restored.syncOperation!.state, 'pending');
     },
   );
 }

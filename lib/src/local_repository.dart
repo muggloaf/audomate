@@ -13,11 +13,51 @@ class LocalSnapshot {
     required this.profile,
     required this.pendingSync,
     required this.pendingDeletes,
+    this.syncOperation,
   });
   final List<AuditProject> projects;
   final EngineerProfile profile;
   final bool pendingSync;
   final List<PendingDelete> pendingDeletes;
+  final SyncOperation? syncOperation;
+}
+
+class SyncOperation {
+  const SyncOperation({
+    required this.revision,
+    required this.state,
+    required this.attemptCount,
+    required this.createdAt,
+    required this.updatedAt,
+    this.nextAttemptAt,
+    this.lastError,
+  });
+  final int revision;
+  final String state;
+  final int attemptCount;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final DateTime? nextAttemptAt;
+  final String? lastError;
+
+  SyncOperation copyWith({
+    int? revision,
+    String? state,
+    int? attemptCount,
+    DateTime? updatedAt,
+    DateTime? nextAttemptAt,
+    String? lastError,
+    bool clearNextAttempt = false,
+    bool clearError = false,
+  }) => SyncOperation(
+    revision: revision ?? this.revision,
+    state: state ?? this.state,
+    attemptCount: attemptCount ?? this.attemptCount,
+    createdAt: createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    nextAttemptAt: clearNextAttempt ? null : nextAttemptAt ?? this.nextAttemptAt,
+    lastError: clearError ? null : lastError ?? this.lastError,
+  );
 }
 
 class PendingDelete {
@@ -59,11 +99,11 @@ class LocalRepository {
   File? _file;
   AudomateDatabase? _database;
 
-  void useUser(String? userId) {
+  Future<void> useUser(String? userId) async {
     if (_explicitFile || _userId == userId) return;
     _userId = userId;
     _file = null;
-    _database?.close();
+    await _database?.close();
     _database = null;
   }
 
@@ -100,6 +140,7 @@ class LocalRepository {
           legacy.profile,
           pendingSync: legacy.pendingSync,
           pendingDeletes: legacy.pendingDeletes,
+          syncOperation: legacy.syncOperation,
         );
         return legacy;
       }
@@ -126,6 +167,7 @@ class LocalRepository {
             (raw['pendingDeletes'] as List<dynamic>? ?? const [])
                 .map((v) => PendingDelete.fromJson(v as Map<String, dynamic>))
                 .toList(),
+        syncOperation: _syncOperationFromJson(raw['syncOperation']),
       );
     } catch (_) {
       // A corrupt or unavailable local file must never prevent field work.
@@ -138,6 +180,8 @@ class LocalRepository {
     EngineerProfile profile, {
     bool pendingSync = true,
     List<PendingDelete> pendingDeletes = const [],
+    int revision = 0,
+    SyncOperation? syncOperation,
   }) async {
     if (!_explicitFile) {
       await _saveDatabase(
@@ -145,6 +189,7 @@ class LocalRepository {
         profile,
         pendingSync: pendingSync,
         pendingDeletes: pendingDeletes,
+        syncOperation: syncOperation,
       );
       return;
     }
@@ -155,6 +200,8 @@ class LocalRepository {
       'pendingSync': pendingSync,
       'pendingDeletes': pendingDeletes.map((v) => v.toJson()).toList(),
       'savedAt': DateTime.now().toUtc().toIso8601String(),
+      'revision': revision,
+      'syncOperation': _syncOperationToJson(syncOperation),
       'profile': _profileToJson(profile),
       'projects': projects.map(_projectToJson).toList(),
     });
@@ -271,10 +318,34 @@ class LocalRepository {
     profile.letterhead = photosByOwner['profile:letterhead']?.firstOrNull;
     profile.signature = photosByOwner['profile:signature']?.firstOrNull;
     final pendingRows = await _db.select(_db.localPendingDeletes).get();
+    final syncJson = state['sync_operation'];
+    final syncMap =
+        syncJson == null
+            ? null
+            : Map<String, dynamic>.from(jsonDecode(syncJson) as Map);
+    final syncOperation =
+        syncMap == null
+            ? null
+            : SyncOperation(
+              revision: syncMap['revision'] as int? ?? 0,
+              state: syncMap['state'] as String? ?? 'pending',
+              attemptCount: syncMap['attemptCount'] as int? ?? 0,
+              createdAt:
+                  DateTime.tryParse(syncMap['createdAt'] as String? ?? '') ??
+                  DateTime.now().toUtc(),
+              updatedAt:
+                  DateTime.tryParse(syncMap['updatedAt'] as String? ?? '') ??
+                  DateTime.now().toUtc(),
+              nextAttemptAt: DateTime.tryParse(
+                syncMap['nextAttemptAt'] as String? ?? '',
+              ),
+              lastError: syncMap['lastError'] as String?,
+            );
     return LocalSnapshot(
       projects: projects,
       profile: profile,
-      pendingSync: state['pending_sync'] != 'false',
+      pendingSync:
+          state['pending_sync'] != 'false' || syncOperation != null,
       pendingDeletes:
           pendingRows
               .map(
@@ -286,6 +357,7 @@ class LocalRepository {
                 ),
               )
               .toList(),
+      syncOperation: syncOperation,
     );
   }
 
@@ -294,6 +366,7 @@ class LocalRepository {
     EngineerProfile profile, {
     required bool pendingSync,
     required List<PendingDelete> pendingDeletes,
+    SyncOperation? syncOperation,
   }) async {
     final projectRows = <LocalProject>[];
     final folderRows = <LocalFolder>[];
@@ -436,6 +509,24 @@ class LocalRepository {
             value: DateTime.now().toUtc().toIso8601String(),
           ),
           const LocalStateRow(key: 'migration_complete', value: 'true'),
+          if (pendingSync)
+            LocalStateRow(
+              key: 'sync_operation',
+              value: jsonEncode({
+                'revision': syncOperation?.revision ?? 0,
+                'state': syncOperation?.state ?? 'pending',
+                'attemptCount': syncOperation?.attemptCount ?? 0,
+                'createdAt':
+                    (syncOperation?.createdAt ?? DateTime.now().toUtc())
+                        .toIso8601String(),
+                'updatedAt':
+                    (syncOperation?.updatedAt ?? DateTime.now().toUtc())
+                        .toIso8601String(),
+                'nextAttemptAt':
+                    syncOperation?.nextAttemptAt?.toIso8601String(),
+                'lastError': syncOperation?.lastError,
+              }),
+            ),
         ]);
       });
     });
@@ -455,6 +546,36 @@ class LocalRepository {
     remotePath: photo.remotePath,
     sortOrder: sortOrder,
   );
+
+  Map<String, dynamic>? _syncOperationToJson(SyncOperation? operation) =>
+      operation == null
+          ? null
+          : {
+            'revision': operation.revision,
+            'state': operation.state,
+            'attemptCount': operation.attemptCount,
+            'createdAt': operation.createdAt.toIso8601String(),
+            'updatedAt': operation.updatedAt.toIso8601String(),
+            'nextAttemptAt': operation.nextAttemptAt?.toIso8601String(),
+            'lastError': operation.lastError,
+          };
+
+  SyncOperation? _syncOperationFromJson(dynamic value) {
+    if (value is! Map) return null;
+    final json = Map<String, dynamic>.from(value);
+    final now = DateTime.now().toUtc();
+    return SyncOperation(
+      revision: json['revision'] as int? ?? 0,
+      state: json['state'] as String? ?? 'pending',
+      attemptCount: json['attemptCount'] as int? ?? 0,
+      createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ?? now,
+      updatedAt: DateTime.tryParse(json['updatedAt'] as String? ?? '') ?? now,
+      nextAttemptAt: DateTime.tryParse(
+        json['nextAttemptAt'] as String? ?? '',
+      ),
+      lastError: json['lastError'] as String?,
+    );
+  }
 
   Map<String, dynamic> _photoToJson(PhotoData? p) =>
       p == null

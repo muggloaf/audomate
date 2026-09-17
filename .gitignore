@@ -90,6 +90,7 @@ app.*.map.json
 
 # Local references, generated reports and scratch output
 /.reference_extract/
+/.private/
 /tmp/
 /output/
 /reports/

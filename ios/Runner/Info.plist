@@ -24,6 +24,10 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Audomate uses the camera to capture evidence photos during structural audits.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Audomate uses your photo library to attach evidence photos to structural issues.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

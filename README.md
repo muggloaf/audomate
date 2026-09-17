@@ -1,19 +1,132 @@
 # audomate
 
-A local-first structural-audit application built with Flutter and Supabase.
+Local-first structural audit software for creating, documenting, and reporting building inspections.
 
-## Local database
+## Project status
 
-Audomate uses a per-user Drift/SQLite database as its offline source of truth.
-Existing `audomate_user_*.json` snapshots are imported automatically the first
-time the matching user database opens. The JSON file is deliberately retained
-as a recovery backup after a successful import.
+audomate is under active development. Core inspection and reporting workflows are usable, while sync, collaboration, and workflow polish continue to evolve.
 
-After changing tables in `lib/src/local_database.dart`, regenerate bindings:
+## The Problem
+
+Structural inspection teams often need to capture findings room-by-room, attach photos, and issue professional reports while working across unstable network conditions. In practice, this creates friction:
+
+- field notes and media can be spread across disconnected tools,
+- report preparation can duplicate data entry,
+- and intermittent connectivity can interrupt cloud-first workflows.
+
+## The Solution
+
+audomate keeps inspection work local-first and project-structured, then syncs when possible.
+
+It models audits around:
+
+- **Projects**: site-level audit records with metadata and cover media
+- **Spaces/rooms**: nested structures (for example building → floor → flat → room)
+- **Findings**: issue type, location, severity, notes, and recommendation
+- **Photos**: attachments on findings and report/profile assets
+- **Templates**: reusable project and space templates (including suggested room names)
+- **Profiles**: engineer and organisation details used in exported reports
+- **Reports**: PDF report generation and sharing from current project data
+
+## How it works
+
+1. **Create a project** with number, name, site, type/template, and optional cover photo.
+2. **Build the inspection structure** using folders/spaces and room entries.
+3. **Record inspection outcomes** by marking no-issue rooms or adding findings with severity, notes, and photos.
+4. **Review and filter data** with search/sort/filter tools across projects and within project trees.
+5. **Export reports to PDF** as complete, filtered, or issue-focused deliverables.
+6. **Sync in background (optional at runtime)** after authenticated Supabase sign-in; local storage remains the source of truth and sync retries failed operations.
+
+## Features
+
+- Offline-first, per-user persistence using **Drift + SQLite**
+- One-time import of legacy `audomate_user_*.json` snapshots into relational storage
+- Legacy JSON snapshots are retained after import for recovery backup
+- Project, folder, room, finding, profile, and media modeling
+- Photo attachments for findings, project covers, report letterhead, and signatures
+- Reusable project/space templates with custom template editing
+- Search/sort for projects; search/filter/sort and issue filtering within project views
+- Cross-project issue browsing
+- Branded PDF report generation/sharing with filtered export modes
+- Supabase authentication-gated workspace access
+- Background push/pull sync with queued deletes and retry/backoff behavior when connectivity fails
+
+## Tech stack
+
+| Area | Technology |
+| --- | --- |
+| App framework | Flutter (Dart) |
+| Local persistence | Drift (`drift`, `drift_flutter`) + SQLite |
+| Cloud/auth/sync | Supabase (`supabase_flutter`) |
+| Reports | `pdf`, `printing` |
+| Media/files | `image_picker`, `file_picker` |
+| Local storage paths | `path_provider` |
+| IDs | `uuid` |
+
+## Setup
+
+### Prerequisites
+
+- Flutter SDK compatible with `sdk: ^3.7.2`
+- A Supabase project configured for this app
+
+### Install dependencies
+
+```sh
+flutter pub get
+```
+
+### Run locally
+
+audomate requires Supabase configuration to open the authenticated workspace.
+
+```sh
+flutter run \
+  --dart-define=SUPABASE_URL=https://YOUR-PROJECT.supabase.co \
+  --dart-define=SUPABASE_PUBLISHABLE_KEY=YOUR_SUPABASE_PUBLISHABLE_KEY
+```
+
+> Local Drift/SQLite persistence is the offline source of truth for audit data, while authenticated Supabase connectivity enables cloud-backed sync.
+
+## Local database and development notes
+
+- If you change tables in `/home/runner/work/audomate/audomate/lib/src/local_database.dart`, regenerate Drift bindings:
 
 ```sh
 dart run build_runner build --delete-conflicting-outputs
 ```
 
-Flutter Web requires the checked-in `web/sqlite3.wasm` and
-`web/drift_worker.dart.js` files. They match sqlite3 2.9.4 and Drift 2.30.0.
+- Flutter Web requires checked-in assets:
+  - `/home/runner/work/audomate/audomate/web/sqlite3.wasm`
+  - `/home/runner/work/audomate/audomate/web/drift_worker.dart.js`
+
+  These currently match **sqlite3 2.9.4** and **Drift 2.30.0**.
+
+## Project structure
+
+```text
+/home/runner/work/audomate/audomate/
+├─ lib/
+│  ├─ main.dart
+│  └─ src/
+│     ├─ app.dart
+│     ├─ app_state.dart
+│     ├─ local_database.dart
+│     ├─ local_repository.dart
+│     ├─ supabase_repository.dart
+│     ├─ report_service.dart
+│     ├─ models.dart
+│     ├─ screens/
+│     └─ widgets/
+├─ test/
+├─ web/
+├─ assets/
+└─ pubspec.yaml
+```
+
+## Roadmap (near-term)
+
+- Continue hardening sync reliability and recovery behavior across intermittent connectivity.
+- Expand report/profile customization for more real-world audit formats.
+- Improve workflow ergonomics for large project trees and issue triage.
+- Add broader automated coverage around end-to-end user workflows.

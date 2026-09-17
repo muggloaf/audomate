@@ -1,10 +1,6 @@
 # audomate
 
-Local-first structural audit software for creating, documenting, and reporting building inspections.
-
-## Project status
-
-audomate is under active development. Core inspection and reporting workflows are usable, while sync, collaboration, and workflow polish continue to evolve.
+Local-first structural audit software for creating, documenting, and reporting building inspections. audomate simplifies the process of auditing buildings - be it for a school, hospital, housing society, or more - by helping engineers easily document issues, monitor them, and generate structured reports all at once.
 
 ## The Problem
 

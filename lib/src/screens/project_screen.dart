@@ -7,7 +7,7 @@ import '../theme.dart';
 import 'audit_screen.dart';
 import 'edit_project_screen.dart';
 
-enum RoomSort { name, newest, oldest, issues }
+enum RoomSort { custom, name, newest, oldest, issues }
 
 class ProjectScreen extends StatefulWidget {
   const ProjectScreen({super.key, required this.project});
@@ -21,7 +21,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
   String query = '';
   final selectedIssues = <String>{};
   bool onlyNoIssues = false;
-  RoomSort sort = RoomSort.name;
+  RoomSort sort = RoomSort.custom;
   final collapsed = <String>{};
 
   AuditProject get project => widget.project;
@@ -57,6 +57,12 @@ class _ProjectScreenState extends State<ProjectScreen> {
         }).toList();
     rooms.sort(
       (a, b) => switch (sort) {
+        RoomSort.custom => _customOrder(
+          a.sortOrder,
+          b.sortOrder,
+          a.name,
+          b.name,
+        ),
         RoomSort.name => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
         RoomSort.newest => (b.inspectedAt ?? DateTime(1900)).compareTo(
           a.inspectedAt ?? DateTime(1900),
@@ -68,6 +74,13 @@ class _ProjectScreenState extends State<ProjectScreen> {
       },
     );
     return rooms;
+  }
+
+  int _customOrder(int left, int right, String leftName, String rightName) {
+    final order = left.compareTo(right);
+    return order != 0
+        ? order
+        : leftName.toLowerCase().compareTo(rightName.toLowerCase());
   }
 
   bool _folderMatches(AuditFolder folder) {
@@ -92,7 +105,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
             )
             .toList()
           ..sort(
-            (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+            (a, b) => _customOrder(a.sortOrder, b.sortOrder, a.name, b.name),
           );
     return Scaffold(
       appBar: AppBar(
@@ -119,9 +132,14 @@ class _ProjectScreenState extends State<ProjectScreen> {
           PopupMenuButton<String>(
             onSelected: (value) {
               if (value == 'delete') _deleteProject();
+              if (value == 'arrange') _arrangeContents(null);
             },
             itemBuilder:
                 (_) => const [
+                  PopupMenuItem(
+                    value: 'arrange',
+                    child: Text('Arrange top-level spaces'),
+                  ),
                   PopupMenuItem(value: 'delete', child: Text('Delete project')),
                 ],
           ),
@@ -154,7 +172,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
                   label: Text(
                     selectedIssues.isEmpty &&
                             !onlyNoIssues &&
-                            sort == RoomSort.name
+                            sort == RoomSort.custom
                         ? 'Filter'
                         : 'Filter active',
                   ),
@@ -181,7 +199,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
             )
             .toList()
           ..sort(
-            (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+            (a, b) => _customOrder(a.sortOrder, b.sortOrder, a.name, b.name),
           );
     final isCollapsed = collapsed.contains(folder.id);
     final node = Column(
@@ -209,6 +227,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
                   'room' => _addRoom(folder),
                   'child' => _addFolder(parent: folder),
                   'edit' => _editFolder(folder),
+                  'arrange' => _arrangeContents(folder),
                   'delete' => _deleteFolder(folder),
                   _ => null,
                 },
@@ -220,6 +239,10 @@ class _ProjectScreenState extends State<ProjectScreen> {
                     child: Text('Add nested space'),
                   ),
                   PopupMenuItem(value: 'edit', child: Text('Edit space')),
+                  PopupMenuItem(
+                    value: 'arrange',
+                    child: Text('Arrange contents'),
+                  ),
                   PopupMenuItem(value: 'delete', child: Text('Delete space')),
                 ],
           ),
@@ -401,7 +424,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
                                     () => update(() {
                                       selectedIssues.clear();
                                       onlyNoIssues = false;
-                                      sort = RoomSort.name;
+                                      sort = RoomSort.custom;
                                     }),
                                 child: const Text('Reset'),
                               ),
@@ -416,6 +439,10 @@ class _ProjectScreenState extends State<ProjectScreen> {
                               labelText: 'Sort rooms',
                             ),
                             items: const [
+                              DropdownMenuItem(
+                                value: RoomSort.custom,
+                                child: Text('Custom order'),
+                              ),
                               DropdownMenuItem(
                                 value: RoomSort.name,
                                 child: Text('Name'),
@@ -571,17 +598,20 @@ class _ProjectScreenState extends State<ProjectScreen> {
       name: name.text.trim(),
       kind: template.kind,
       parentId: parent?.id,
+      sortOrder: _nextFolderOrder(parent?.id),
     );
     setState(() {
       _revealFolder(parent);
       project.folders.add(folder);
       collapsed.remove(folder.id);
-      for (final roomName in template.roomNames) {
+      for (var index = 0; index < template.roomNames.length; index++) {
+        final roomName = template.roomNames[index];
         project.spaces.add(
           SpaceAudit(
             name: roomName,
             section: folder.name,
             sectionId: folder.id,
+            sortOrder: index,
           ),
         );
       }
@@ -613,11 +643,43 @@ class _ProjectScreenState extends State<ProjectScreen> {
           name: name.text.trim(),
           section: folder.name,
           sectionId: folder.id,
+          sortOrder: _nextRoomOrder(folder.id),
         ),
       );
     });
     AuditScope.of(context).changed();
     _message('${name.text.trim()} added');
+  }
+
+  int _nextFolderOrder(String? parentId) {
+    final siblings = project.folders.where(
+      (folder) => folder.parentId == parentId,
+    );
+    var highest = -1;
+    for (final folder in siblings) {
+      if (folder.sortOrder > highest) highest = folder.sortOrder;
+    }
+    return highest + 1;
+  }
+
+  int _nextRoomOrder(String folderId) {
+    final rooms = project.spaces.where((room) => room.sectionId == folderId);
+    var highest = -1;
+    for (final room in rooms) {
+      if (room.sortOrder > highest) highest = room.sortOrder;
+    }
+    return highest + 1;
+  }
+
+  Future<void> _arrangeContents(AuditFolder? folder) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder:
+            (_) => _ArrangeContentsScreen(project: project, folder: folder),
+      ),
+    );
+    if (mounted) setState(() {});
   }
 
   void _revealFolder(AuditFolder? folder) {
@@ -854,6 +916,154 @@ class _ProjectScreenState extends State<ProjectScreen> {
       ),
     );
   }
+}
+
+class _ArrangeContentsScreen extends StatefulWidget {
+  const _ArrangeContentsScreen({required this.project, required this.folder});
+
+  final AuditProject project;
+  final AuditFolder? folder;
+
+  @override
+  State<_ArrangeContentsScreen> createState() => _ArrangeContentsScreenState();
+}
+
+class _ArrangeContentsScreenState extends State<_ArrangeContentsScreen> {
+  int _compare(int left, int right, String leftName, String rightName) {
+    final result = left.compareTo(right);
+    return result != 0
+        ? result
+        : leftName.toLowerCase().compareTo(rightName.toLowerCase());
+  }
+
+  List<AuditFolder> get _folders =>
+      widget.project.folders
+          .where((item) => item.parentId == widget.folder?.id)
+          .toList()
+        ..sort((a, b) => _compare(a.sortOrder, b.sortOrder, a.name, b.name));
+
+  List<SpaceAudit> get _rooms =>
+      widget.project.spaces
+          .where((item) => item.sectionId == widget.folder?.id)
+          .toList()
+        ..sort((a, b) => _compare(a.sortOrder, b.sortOrder, a.name, b.name));
+
+  void _reorderFolders(int oldIndex, int newIndex) {
+    final items = _folders;
+    if (newIndex > oldIndex) newIndex--;
+    final moved = items.removeAt(oldIndex);
+    items.insert(newIndex, moved);
+    for (var index = 0; index < items.length; index++) {
+      items[index].sortOrder = index;
+    }
+    AuditScope.of(context).changed();
+    setState(() {});
+  }
+
+  void _reorderRooms(int oldIndex, int newIndex) {
+    final items = _rooms;
+    if (newIndex > oldIndex) newIndex--;
+    final moved = items.removeAt(oldIndex);
+    items.insert(newIndex, moved);
+    for (var index = 0; index < items.length; index++) {
+      items[index].sortOrder = index;
+    }
+    AuditScope.of(context).changed();
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final folders = _folders;
+    final rooms = _rooms;
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(
+            widget.folder == null
+                ? 'Arrange project spaces'
+                : 'Arrange ${widget.folder!.name}',
+          ),
+        ),
+        body: Column(
+          children: <Widget>[
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 16, 20, 12),
+              child: Text(
+                'Drag the handle to choose the order used in this project and its report.',
+                style: TextStyle(color: muted),
+              ),
+            ),
+            const TabBar(tabs: [Tab(text: 'Spaces'), Tab(text: 'Rooms')]),
+            Expanded(
+              child: TabBarView(
+                children: <Widget>[_folderList(folders), _roomList(rooms)],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _folderList(List<AuditFolder> folders) {
+    if (folders.isEmpty) return _emptyList('No nested spaces to arrange yet.');
+    return ReorderableListView.builder(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+      buildDefaultDragHandles: false,
+      itemCount: folders.length,
+      onReorder: _reorderFolders,
+      itemBuilder: (context, index) {
+        final folder = folders[index];
+        return Card(
+          key: ValueKey(folder.id),
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          child: ListTile(
+            leading: const Icon(Icons.folder_outlined, color: forest),
+            title: Text(folder.name),
+            subtitle: Text(folder.kind),
+            trailing: ReorderableDragStartListener(
+              index: index,
+              child: const Icon(Icons.drag_handle_rounded),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _roomList(List<SpaceAudit> rooms) {
+    if (rooms.isEmpty) return _emptyList('No rooms to arrange yet.');
+    return ReorderableListView.builder(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+      buildDefaultDragHandles: false,
+      itemCount: rooms.length,
+      onReorder: _reorderRooms,
+      itemBuilder: (context, index) {
+        final room = rooms[index];
+        return Card(
+          key: ValueKey(room.id),
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          child: ListTile(
+            leading: const Icon(Icons.meeting_room_outlined, color: forest),
+            title: Text(room.name),
+            trailing: ReorderableDragStartListener(
+              index: index,
+              child: const Icon(Icons.drag_handle_rounded),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _emptyList(String message) => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: Text(message, style: const TextStyle(color: muted)),
+    ),
+  );
 }
 
 class _Summary extends StatelessWidget {

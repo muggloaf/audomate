@@ -116,6 +116,8 @@ class ReportService {
             ).compareTo(_folderSortKey(project, b));
             return path != 0
                 ? path
+                : a.sortOrder != b.sortOrder
+                ? a.sortOrder.compareTo(b.sortOrder)
                 : a.name.toLowerCase().compareTo(b.name.toLowerCase());
           });
 
@@ -467,19 +469,24 @@ class ReportService {
           project.folders
               .where((folder) => folder.parentId == parentId)
               .toList()
-            ..sort(
-              (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
-            );
+            ..sort((a, b) {
+              final order = a.sortOrder.compareTo(b.sortOrder);
+              return order != 0
+                  ? order
+                  : a.name.toLowerCase().compareTo(b.name.toLowerCase());
+            });
       final childRooms =
           parentId == null
               ? <SpaceAudit>[]
               : (project.spaces
                   .where((room) => room.sectionId == parentId)
                   .toList()
-                ..sort(
-                  (a, b) =>
-                      a.name.toLowerCase().compareTo(b.name.toLowerCase()),
-                ));
+                ..sort((a, b) {
+                  final order = a.sortOrder.compareTo(b.sortOrder);
+                  return order != 0
+                      ? order
+                      : a.name.toLowerCase().compareTo(b.name.toLowerCase());
+                }));
 
       var position = 0;
       for (final folder in childFolders) {
@@ -538,11 +545,15 @@ class ReportService {
     return path.reversed.toList();
   }
 
-  static String _folderSortKey(AuditProject project, SpaceAudit room) =>
-      _folderPath(
-        project,
-        room,
-      ).map((folder) => folder.name.toLowerCase()).join('\u0000');
+  static String _folderSortKey(
+    AuditProject project,
+    SpaceAudit room,
+  ) => _folderPath(project, room)
+      .map(
+        (folder) =>
+            '${folder.sortOrder.toString().padLeft(8, '0')}\u0000${folder.name.toLowerCase()}',
+      )
+      .join('\u0000');
 
   static pw.Widget _folderHeading(
     AuditFolder folder, {

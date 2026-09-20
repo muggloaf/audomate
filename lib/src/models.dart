@@ -44,6 +44,7 @@ class SpaceAudit {
     String? id,
     String? sectionId,
     String? inspectionId,
+    this.sortOrder = 0,
   }) : id = id ?? newId(),
        sectionId = sectionId ?? newId(),
        inspectionId = inspectionId ?? newId();
@@ -55,6 +56,7 @@ class SpaceAudit {
   String owner;
   DateTime? inspectedAt;
   bool noIssues = false;
+  int sortOrder;
   final List<Finding> findings = [];
   bool get isComplete => noIssues || findings.isNotEmpty;
 }
@@ -64,6 +66,7 @@ class AuditFolder {
     required this.name,
     this.kind = 'Space',
     this.parentId,
+    this.sortOrder = 0,
     String? id,
   }) : id = id ?? newId();
 
@@ -71,6 +74,7 @@ class AuditFolder {
   String name;
   String kind;
   String? parentId;
+  int sortOrder;
 }
 
 class AuditProject {

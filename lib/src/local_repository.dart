@@ -55,7 +55,8 @@ class SyncOperation {
     attemptCount: attemptCount ?? this.attemptCount,
     createdAt: createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
-    nextAttemptAt: clearNextAttempt ? null : nextAttemptAt ?? this.nextAttemptAt,
+    nextAttemptAt:
+        clearNextAttempt ? null : nextAttemptAt ?? this.nextAttemptAt,
     lastError: clearError ? null : lastError ?? this.lastError,
   );
 }
@@ -268,6 +269,7 @@ class LocalRepository {
               inspectionId: row.inspectionId,
               name: row.name,
               section: row.sectionName,
+              sortOrder: row.sortOrder,
             )
             ..inspectedAt = row.inspectedAt
             ..noIssues = row.noIssues
@@ -284,6 +286,7 @@ class LocalRepository {
               name: row.name,
               kind: row.kind,
               parentId: row.parentId,
+              sortOrder: row.sortOrder,
             ),
           );
     }
@@ -344,8 +347,7 @@ class LocalRepository {
     return LocalSnapshot(
       projects: projects,
       profile: profile,
-      pendingSync:
-          state['pending_sync'] != 'false' || syncOperation != null,
+      pendingSync: state['pending_sync'] != 'false' || syncOperation != null,
       pendingDeletes:
           pendingRows
               .map(
@@ -394,8 +396,7 @@ class LocalRepository {
           _localPhoto(project.coverPhoto!, 'project', project.id, 0),
         );
       }
-      for (var index = 0; index < project.folders.length; index++) {
-        final folder = project.folders[index];
+      for (final folder in project.folders) {
         folderRows.add(
           LocalFolder(
             id: folder.id,
@@ -403,12 +404,11 @@ class LocalRepository {
             parentId: folder.parentId,
             name: folder.name,
             kind: folder.kind,
-            sortOrder: index,
+            sortOrder: folder.sortOrder,
           ),
         );
       }
-      for (var roomIndex = 0; roomIndex < project.spaces.length; roomIndex++) {
-        final room = project.spaces[roomIndex];
+      for (final room in project.spaces) {
         roomRows.add(
           LocalRoom(
             id: room.id,
@@ -419,7 +419,7 @@ class LocalRepository {
             sectionName: room.section,
             inspectedAt: room.inspectedAt,
             noIssues: room.noIssues,
-            sortOrder: roomIndex,
+            sortOrder: room.sortOrder,
           ),
         );
         for (
@@ -570,9 +570,7 @@ class LocalRepository {
       attemptCount: json['attemptCount'] as int? ?? 0,
       createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ?? now,
       updatedAt: DateTime.tryParse(json['updatedAt'] as String? ?? '') ?? now,
-      nextAttemptAt: DateTime.tryParse(
-        json['nextAttemptAt'] as String? ?? '',
-      ),
+      nextAttemptAt: DateTime.tryParse(json['nextAttemptAt'] as String? ?? ''),
       lastError: json['lastError'] as String?,
     );
   }
@@ -629,6 +627,7 @@ class LocalRepository {
     'section': s.section,
     'inspectedAt': s.inspectedAt?.toUtc().toIso8601String(),
     'noIssues': s.noIssues,
+    'sortOrder': s.sortOrder,
     'findings': s.findings.map(_findingToJson).toList(),
   };
 
@@ -639,6 +638,7 @@ class LocalRepository {
       inspectionId: value['inspectionId'] as String?,
       name: value['name'] as String? ?? 'Untitled space',
       section: value['section'] as String? ?? 'Standalone spaces',
+      sortOrder: value['sortOrder'] as int? ?? 0,
     );
     final inspectedAt = value['inspectedAt'] as String?;
     if (inspectedAt != null) {
@@ -673,6 +673,7 @@ class LocalRepository {
                 'name': f.name,
                 'kind': f.kind,
                 'parentId': f.parentId,
+                'sortOrder': f.sortOrder,
               },
             )
             .toList(),
@@ -706,6 +707,7 @@ class LocalRepository {
                   name: v['name'] as String? ?? 'Space',
                   kind: v['kind'] as String? ?? 'Space',
                   parentId: v['parentId'] as String?,
+                  sortOrder: v['sortOrder'] as int? ?? 0,
                 ),
               )
               .toList(),

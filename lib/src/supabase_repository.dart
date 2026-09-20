@@ -103,22 +103,18 @@ class SupabaseRepository {
           'parent_section_id': folder.parentId,
           'name': folder.name,
           'kind': folder.kind,
+          'sort_order': folder.sortOrder,
         });
       }
 
-      for (
-        var spaceIndex = 0;
-        spaceIndex < project.spaces.length;
-        spaceIndex++
-      ) {
-        final space = project.spaces[spaceIndex];
+      for (final space in project.spaces) {
         await client.from('spaces').upsert({
           'id': space.id,
           'project_id': project.id,
           'section_id': space.sectionId,
           'name': space.name,
           'owner_or_occupant': '',
-          'sort_order': spaceIndex,
+          'sort_order': space.sortOrder,
         });
         if (!space.isComplete && space.inspectedAt == null) continue;
         await client.from('inspections').upsert({
@@ -205,7 +201,8 @@ class SupabaseRepository {
             : await client
                 .from('project_sections')
                 .select()
-                .inFilter('project_id', projectIds);
+                .inFilter('project_id', projectIds)
+                .order('sort_order');
     final spaceRows =
         projectIds.isEmpty
             ? <dynamic>[]
@@ -270,6 +267,7 @@ class SupabaseRepository {
               name: row['name'] as String,
               kind: row['kind'] as String? ?? 'Space',
               parentId: row['parent_section_id'] as String?,
+              sortOrder: row['sort_order'] as int? ?? 0,
             ),
           );
     }
@@ -360,6 +358,7 @@ class SupabaseRepository {
         inspectionId: inspection?['id'] as String?,
         name: row['name'] as String,
         section: sections[row['section_id']] ?? 'Standalone spaces',
+        sortOrder: row['sort_order'] as int? ?? 0,
       );
       if (inspection != null) {
         space.inspectedAt =

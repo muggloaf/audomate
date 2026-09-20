@@ -13,16 +13,22 @@ void main() {
       final database = AudomateDatabase.forTesting(NativeDatabase.memory());
       addTearDown(database.close);
       final repository = LocalRepository(database: database);
-      final root = AuditFolder(name: 'Building 1', kind: 'Building');
+      final root = AuditFolder(
+        name: 'Building 1',
+        kind: 'Building',
+        sortOrder: 2,
+      );
       final emptyFlat = AuditFolder(
         name: 'Flat 101',
         kind: 'Flat',
         parentId: root.id,
+        sortOrder: 4,
       );
       final room = SpaceAudit(
         name: 'Future bedroom',
         section: emptyFlat.name,
         sectionId: emptyFlat.id,
+        sortOrder: 3,
       );
       final photo = PhotoData(
         name: 'cover.jpg',
@@ -52,6 +58,8 @@ void main() {
       expect(restored!.projects.single.folders.length, 2);
       expect(restored.projects.single.spaces.single.name, 'Future bedroom');
       expect(restored.projects.single.spaces.single.isComplete, isFalse);
+      expect(restored.projects.single.folders.first.sortOrder, 2);
+      expect(restored.projects.single.spaces.single.sortOrder, 3);
       expect(restored.projects.single.coverPhoto!.bytes, [9, 8, 7]);
       expect(restored.pendingSync, isTrue);
       expect(restored.pendingDeletes.single.id, 'old-room');

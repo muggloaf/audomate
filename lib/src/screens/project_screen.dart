@@ -899,13 +899,20 @@ class _ProjectScreenState extends State<ProjectScreen> {
           ),
     );
     if (choice == null || !mounted) return;
-    await ReportService.share(
-      project,
-      AuditScope.of(context).profile,
-      issueFilters: choice == 'filtered' ? selectedIssues : const {},
-      noIssuesOnly: choice == 'filtered' && onlyNoIssues,
-      issuesOnly: choice == 'filtered' && !onlyNoIssues,
-    );
+    try {
+      await ReportService.share(
+        project,
+        AuditScope.of(context).profile,
+        issueFilters: choice == 'filtered' ? selectedIssues : const {},
+        noIssuesOnly: choice == 'filtered' && onlyNoIssues,
+        issuesOnly: choice == 'filtered' && !onlyNoIssues,
+      );
+      if (mounted) _message('Report export ready');
+    } catch (error) {
+      if (mounted) {
+        _message('Report export failed: $error', error: true);
+      }
+    }
   }
 
   void _message(String text, {bool error = false}) {

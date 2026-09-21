@@ -24,14 +24,15 @@ class _EditProjectScreenState extends State<EditProjectScreen> {
       type: FileType.image,
       withData: true,
     );
-    if (result?.files.single.bytes != null)
-      {setState(
+    if (result?.files.single.bytes != null) {
+      setState(
         () =>
             widget.project.coverPhoto = PhotoData(
               bytes: result!.files.single.bytes!,
               name: result.files.single.name,
             ),
-      );}
+      );
+    }
   }
 
   void save() {
@@ -39,7 +40,9 @@ class _EditProjectScreenState extends State<EditProjectScreen> {
         number.text.trim().isEmpty ||
         site.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Name, address and project number are required.')),
+        const SnackBar(
+          content: Text('Name, address and project number are required.'),
+        ),
       );
       return;
     }
@@ -48,11 +51,14 @@ class _EditProjectScreenState extends State<EditProjectScreen> {
           project.id != widget.project.id &&
           (project.number.toLowerCase() == number.text.trim().toLowerCase() ||
               (project.name.toLowerCase() == name.text.trim().toLowerCase() &&
-                  project.site.toLowerCase() == site.text.trim().toLowerCase())),
+                  project.site.toLowerCase() ==
+                      site.text.trim().toLowerCase())),
     );
     if (duplicate) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('That project number or name/address already exists.')),
+        const SnackBar(
+          content: Text('That project number or name/address already exists.'),
+        ),
       );
       return;
     }

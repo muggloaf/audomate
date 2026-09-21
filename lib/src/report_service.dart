@@ -72,6 +72,38 @@ class ReportService {
         profile.signature == null
             ? null
             : pw.MemoryImage(profile.signature!.bytes);
+    pw.Widget reportHeader(pw.Context _) => pw.Padding(
+      padding: const pw.EdgeInsets.only(bottom: 12),
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          pw.Text(
+            profile.organisation,
+            style: pw.TextStyle(color: grey, fontSize: 11),
+          ),
+          pw.Row(
+            mainAxisSize: pw.MainAxisSize.min,
+            children: [
+              pw.Text(
+                '${project.number}  |  ',
+                style: pw.TextStyle(color: grey, fontSize: 11),
+              ),
+              _wordmark(grey, green, ink, wordmarkFont),
+            ],
+          ),
+        ],
+      ),
+    );
+    pw.Widget reportFooter(pw.Context context) => pw.Padding(
+      padding: const pw.EdgeInsets.only(top: 12),
+      child: pw.Align(
+        alignment: pw.Alignment.centerRight,
+        child: pw.Text(
+          'Page ${context.pageNumber} of ${context.pagesCount}',
+          style: pw.TextStyle(color: grey, fontSize: 11),
+        ),
+      ),
+    );
     final priorityACount = project.spaces.fold<int>(
       0,
       (total, room) =>
@@ -218,126 +250,102 @@ class ReportService {
 
     if (!issuesOnly) {
       doc.addPage(
-        pw.Page(
+        pw.MultiPage(
           pageFormat: PdfPageFormat.a4,
-          margin: const pw.EdgeInsets.all(42),
+          maxPages: 100,
+          margin: const pw.EdgeInsets.fromLTRB(42, 54, 42, 60),
+          header: reportHeader,
+          footer: reportFooter,
           build:
-              (_) => pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  _brand(grey, green, ink, wordmarkFont),
-                  pw.SizedBox(height: 12),
-                  if (project.preamble.isNotEmpty) ...[
-                    pw.Text(
-                      'Preamble',
-                      style: pw.TextStyle(
-                        fontSize: 25,
-                        color: green,
-                        fontWeight: pw.FontWeight.bold,
-                      ),
-                    ),
-                    pw.SizedBox(height: 14),
-                    pw.Text(
-                      project.preamble,
-                      style: const pw.TextStyle(fontSize: 14, lineSpacing: 5),
-                    ),
-                    pw.SizedBox(height: 26),
-                  ],
+              (_) => [
+                pw.SizedBox(height: 4),
+                if (project.preamble.isNotEmpty) ...[
                   pw.Text(
-                    'Observation summary',
+                    'Preamble',
                     style: pw.TextStyle(
-                      fontSize: project.preamble.isEmpty ? 25 : 20,
-                      color: project.preamble.isEmpty ? green : null,
+                      fontSize: 25,
+                      color: green,
                       fontWeight: pw.FontWeight.bold,
                     ),
                   ),
-                  pw.SizedBox(height: 10),
-                  // pw.Text(
-                  //   'Buildings: $buildingCount  |  Flats: $flatCount  |  Rooms: ${project.spaces.length}  |  Inspected: ${project.completed}',
-                  //   style: const pw.TextStyle(fontSize: 10),
-                  // ),
-                  pw.SizedBox(height: 18),
+                  pw.SizedBox(height: 14),
                   pw.Text(
-                    'Identified issues',
-                    style: pw.TextStyle(
-                      fontSize: 16,
-                      fontWeight: pw.FontWeight.bold,
-                    ),
+                    project.preamble,
+                    textAlign: pw.TextAlign.justify,
+                    overflow: pw.TextOverflow.span,
+                    style: const pw.TextStyle(fontSize: 14, lineSpacing: 5),
                   ),
-                  pw.SizedBox(height: 7),
-                  if (identifiedIssues.isEmpty)
-                    pw.Text(
-                      'No structural issues were identified.',
-                      style: const pw.TextStyle(fontSize: 12),
-                    )
-                  else
-                    ...identifiedIssues.map(
-                      (issue) => pw.Padding(
-                        padding: const pw.EdgeInsets.only(bottom: 4),
-                        child: pw.Text(
-                          '- ${issue.key}: ${issue.value} ${issue.value == 1 ? 'observation' : 'observations'}',
-                          style: const pw.TextStyle(fontSize: 12),
-                        ),
-                      ),
-                    ),
-                  pw.SizedBox(height: 8),
-                  pw.Text(
-                    'Total issues: ${project.issueCount}  |  Priority A: $priorityACount',
-                    style: pw.TextStyle(
-                      fontSize: 12,
-                      fontWeight: pw.FontWeight.bold,
-                    ),
-                  ),
-                  pw.SizedBox(height: 20),
-                  pw.Text(
-                    'Rectification classification',
-                    style: pw.TextStyle(
-                      fontSize: 16,
-                      fontWeight: pw.FontWeight.bold,
-                    ),
-                  ),
-                  pw.SizedBox(height: 7),
-                  pw.Text(
-                    'A - attend within 1 month\nB - attend within 3 months\nMonitor - observe and reassess as advised',
-                    style: const pw.TextStyle(fontSize: 12, lineSpacing: 4),
-                  ),
+                  pw.SizedBox(height: 26),
                 ],
-              ),
+                pw.Text(
+                  'Observation summary',
+                  style: pw.TextStyle(
+                    fontSize: project.preamble.isEmpty ? 25 : 20,
+                    color: project.preamble.isEmpty ? green : null,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+                pw.SizedBox(height: 10),
+                // pw.Text(
+                //   'Buildings: $buildingCount  |  Flats: $flatCount  |  Rooms: ${project.spaces.length}  |  Inspected: ${project.completed}',
+                //   style: const pw.TextStyle(fontSize: 10),
+                // ),
+                pw.SizedBox(height: 18),
+                pw.Text(
+                  'Identified issues',
+                  style: pw.TextStyle(
+                    fontSize: 16,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+                pw.SizedBox(height: 7),
+                if (identifiedIssues.isEmpty)
+                  pw.Text(
+                    'No structural issues were identified.',
+                    style: const pw.TextStyle(fontSize: 12),
+                  )
+                else
+                  ...identifiedIssues.map(
+                    (issue) => pw.Padding(
+                      padding: const pw.EdgeInsets.only(bottom: 4),
+                      child: pw.Text(
+                        '- ${issue.key}: ${issue.value} ${issue.value == 1 ? 'observation' : 'observations'}',
+                        style: const pw.TextStyle(fontSize: 12),
+                      ),
+                    ),
+                  ),
+                pw.SizedBox(height: 8),
+                pw.Text(
+                  'Total issues: ${project.issueCount}  |  Priority A: $priorityACount',
+                  style: pw.TextStyle(
+                    fontSize: 12,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+                pw.SizedBox(height: 20),
+                pw.Text(
+                  'Rectification classification',
+                  style: pw.TextStyle(
+                    fontSize: 16,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+                pw.SizedBox(height: 7),
+                pw.Text(
+                  'A - attend within 1 month\nB - attend within 3 months\nMonitor - observe and reassess as advised',
+                  style: const pw.TextStyle(fontSize: 12, lineSpacing: 4),
+                ),
+              ],
         ),
       );
     }
     doc.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
+        maxPages: 100,
         margin: const pw.EdgeInsets.fromLTRB(42, 46, 42, 54),
-        header:
-            (_) => pw.Row(
-              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-              children: [
-                pw.Text(
-                  profile.organisation,
-                  style: pw.TextStyle(color: grey, fontSize: 11),
-                ),
-                pw.Row(
-                  mainAxisSize: pw.MainAxisSize.min,
-                  children: [
-                    pw.Text(
-                      '${project.number}  |  ',
-                      style: pw.TextStyle(color: grey, fontSize: 11),
-                    ),
-                    _wordmark(grey, green, ink, wordmarkFont),
-                  ],
-                ),
-              ],
-            ),
-        footer:
-            (c) => pw.Align(
-              alignment: pw.Alignment.centerRight,
-              child: pw.Text(
-                'Page ${c.pageNumber} of ${c.pagesCount}',
-                style: pw.TextStyle(color: grey, fontSize: 11),
-              ),
-            ),
+        header: reportHeader,
+        footer: reportFooter,
         build: (_) {
           final widgets = <pw.Widget>[
             pw.Text(
@@ -412,48 +420,49 @@ class ReportService {
 
     if (!issuesOnly) {
       doc.addPage(
-        pw.Page(
+        pw.MultiPage(
           pageFormat: PdfPageFormat.a4,
-          margin: const pw.EdgeInsets.all(42),
+          maxPages: 100,
+          margin: const pw.EdgeInsets.fromLTRB(42, 54, 42, 60),
+          header: reportHeader,
+          footer: reportFooter,
           build:
-              (_) => pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  _brand(grey, green, ink, wordmarkFont),
-                  pw.SizedBox(height: 12),
-                  pw.Text(
-                    'Conclusion',
-                    style: pw.TextStyle(
-                      fontSize: 25,
-                      color: green,
-                      fontWeight: pw.FontWeight.bold,
-                    ),
+              (_) => [
+                pw.SizedBox(height: 4),
+                pw.Text(
+                  'Conclusion',
+                  style: pw.TextStyle(
+                    fontSize: 25,
+                    color: green,
+                    fontWeight: pw.FontWeight.bold,
                   ),
-                  pw.SizedBox(height: 14),
-                  pw.Text(
-                    project.conclusion.isEmpty
-                        ? 'The observations and recommendations recorded in this report should be acted upon within the stated priority periods.'
-                        : project.conclusion,
-                    style: const pw.TextStyle(fontSize: 14, lineSpacing: 5),
+                ),
+                pw.SizedBox(height: 14),
+                pw.Text(
+                  project.conclusion.isEmpty
+                      ? 'The observations and recommendations recorded in this report should be acted upon within the stated priority periods.'
+                      : project.conclusion,
+                  textAlign: pw.TextAlign.justify,
+                  overflow: pw.TextOverflow.span,
+                  style: const pw.TextStyle(fontSize: 14, lineSpacing: 5),
+                ),
+                pw.SizedBox(height: 36),
+                if (signature != null)
+                  pw.Container(
+                    height: 90,
+                    width: 210,
+                    alignment: pw.Alignment.centerLeft,
+                    child: pw.Image(signature, fit: pw.BoxFit.contain),
                   ),
-                  pw.Spacer(),
-                  if (signature != null)
-                    pw.Container(
-                      height: 90,
-                      width: 210,
-                      alignment: pw.Alignment.centerLeft,
-                      child: pw.Image(signature, fit: pw.BoxFit.contain),
-                    ),
-                  pw.Text(
-                    profile.name,
-                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-                  ),
-                  pw.Text(profile.designation),
-                  pw.Text(profile.organisation),
-                  if (profile.licence.isNotEmpty)
-                    pw.Text('Licence No: ${profile.licence}'),
-                ],
-              ),
+                pw.Text(
+                  profile.name,
+                  style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                ),
+                pw.Text(profile.designation),
+                pw.Text(profile.organisation),
+                if (profile.licence.isNotEmpty)
+                  pw.Text('Licence No: ${profile.licence}'),
+              ],
         ),
       );
     }
